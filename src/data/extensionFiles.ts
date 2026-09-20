@@ -202,9 +202,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   {
     filename: 'content.js',
     path: 'content.js',
-    description: 'Script de Conteúdo: Atalhos Ctrl+B, Ctrl+Shift+Arrastar (Google Lens) e Pause/Break ou Ctrl+Shift+Espaço',
+    description: 'Script de Conteúdo: Atalhos Ctrl+B, Ctrl+Shift+Arrastar (Google Lens) e Pause/Break ou Ctrl+Shift+Espaço com HUD unificado e Telemetria API',
     language: 'javascript',
-    content: `// Content Script - STT&TTS de Satiro
+    content: `// Content Script - STT&TTS de Satiro (100% Autônomo com Modo Direto Gemini & HUD Aprimorado)
 (function() {
   // Previne injeção duplicada na mesma página
   if (window.__VOCALLENS_LOADED__) return;
@@ -222,8 +222,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   let overlayEl = null;
   let selectionBoxEl = null;
 
-  // Histórico local de transcrições da sessão
+  // Histórico local de transcrições e logs de API da sessão
   let sessionTranscriptions = [];
+  let apiLogs = [];
 
   // Configurações padrão com modo direto prioritário
   let settings = {
@@ -251,8 +252,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get({ sessionTranscriptions: [] }, (res) => {
+      chrome.storage.local.get({ sessionTranscriptions: [], apiLogs: [] }, (res) => {
         if (res && res.sessionTranscriptions) sessionTranscriptions = res.sessionTranscriptions;
+        if (res && res.apiLogs) apiLogs = res.apiLogs;
       });
     }
   }
@@ -265,14 +267,54 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         for (let key in changes) {
           settings[key] = changes[key].newValue;
         }
+        // Aplica velocidade imediatamente se houver áudio tocando
+        if (changes.ttsSpeed && activeAudioPlayer) {
+          const newSpd = parseFloat(changes.ttsSpeed.newValue || 1.0);
+          activeAudioPlayer.playbackRate = newSpd;
+          activeAudioPlayer.defaultPlaybackRate = newSpd;
+        }
       }
-      if (area === 'local' && changes.sessionTranscriptions) {
-        sessionTranscriptions = changes.sessionTranscriptions.newValue || [];
+      if (area === 'local') {
+        if (changes.sessionTranscriptions) sessionTranscriptions = changes.sessionTranscriptions.newValue || [];
+        if (changes.apiLogs) apiLogs = changes.apiLogs.newValue || [];
       }
     });
   }
 
-  // Floating Toast HUD para feedback visual na página
+  // -------------------------------------------------------------
+  // TELEMETRIA & LOGS DETALHADOS DE API GEMINI
+  // -------------------------------------------------------------
+  function logApiCall(entry) {
+    const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const logItem = {
+      id: 'api-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      timestamp: Date.now(),
+      timeFormatted: timeStr,
+      action: entry.action || 'API',
+      model: entry.model || 'gemini-3.5-flash-lite',
+      endpoint: entry.endpoint || 'generateContent',
+      latencyMs: entry.latencyMs || 0,
+      statusCode: entry.statusCode || (entry.success ? 200 : 500),
+      statusText: entry.statusText || (entry.success ? 'OK' : 'Error'),
+      success: Boolean(entry.success),
+      payloadInfo: entry.payloadInfo || '',
+      errorMessage: entry.errorMessage || null,
+      mode: entry.mode || 'direct'
+    };
+
+    apiLogs.unshift(logItem);
+    if (apiLogs.length > 50) apiLogs.pop();
+
+    if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+      chrome.storage.local.set({ apiLogs });
+    }
+
+    console.log('[STT&TTS API Log]', logItem.action, logItem.model, logItem.latencyMs + 'ms', logItem.statusCode, logItem.payloadInfo);
+  }
+
+  // -------------------------------------------------------------
+  // FLOATING HUD ELEGANTE UNIFICADO PARA TODAS AS AÇÕES
+  // -------------------------------------------------------------
   let hudRecordingTimer = null;
   let hudSeconds = 0;
 
@@ -306,6 +348,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
 
+  // Exibe HUD com Estágio Numerado e Rico para Qualquer Ação (TTS, STT, Vision)
+  function showStageHud({ actionType, currentStage, totalStages, title, subtitle, details, icon, type = 'processing', duration = 0 }) {
+    const hud = ensureHudElement();
+    hud.setAttribute('data-type', type);
+    hud.style.display = 'flex';
+    hud.style.opacity = '1';
+
+    const stageBadge = actionType + ' [' + currentStage + '/' + totalStages + ']';
+
+    let iconHtml = '<span class="vocallens-hud-spinner"></span>';
+    if (icon === 'pulse') {
+      iconHtml = '<span class="vocallens-hud-dot-pulse"></span>';
+    } else if (icon === 'check') {
+      iconHtml = '<span class="vocallens-hud-check">✓</span>';
+    } else if (icon) {
+      iconHtml = '<span style="font-size:14px;">' + icon + '</span>';
+    }
+
+    hud.innerHTML = \`
+      <div class="vocallens-hud-inner">
+        <div class="vocallens-hud-header" style="justify-content: space-between;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            \${iconHtml}
+            <strong class="vocallens-hud-title">\${title}</strong>
+          </div>
+          <span class="vocallens-hud-stage-badge">\${stageBadge}</span>
+        </div>
+        \${subtitle ? \`<div class="vocallens-hud-sub">\${subtitle}</div>\` : ''}
+        \${details ? \`<div class="vocallens-hud-details">\${details}</div>\` : ''}
+      </div>
+    \`;
+
+    if (hud._timer) clearTimeout(hud._timer);
+    if (duration > 0) {
+      hud._timer = setTimeout(() => hideHud(), duration);
+    }
+  }
+
   function showRecordingHud(hasTargetField) {
     const hud = ensureHudElement();
     hud.setAttribute('data-type', 'recording');
@@ -317,11 +397,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       <div class="vocallens-hud-inner">
         <div class="vocallens-hud-header">
           <span class="vocallens-hud-dot-pulse"></span>
-          <strong class="vocallens-hud-title">Gravando Fala...</strong>
+          <strong class="vocallens-hud-title">Gravando Voz no Microfone...</strong>
           <span class="vocallens-hud-counter" id="vocallens-hud-sec">0s</span>
         </div>
         <div class="vocallens-hud-sub">
-          \${hasTargetField ? 'Focado no campo. Pressione Pause ou Ctrl+Shift+Espaço para finalizar.' : 'Pressione Pause ou Ctrl+Shift+Espaço para encerrar e transcrever.'}
+          \${hasTargetField ? '🎯 Alvo identificado no campo. Fale agora e pressione Pause ou Ctrl+Shift+Espaço ao terminar.' : '🎙️ Fale agora com clareza. Pressione Pause ou Ctrl+Shift+Espaço para finalizar.'}
+        </div>
+        <div class="vocallens-hud-stage-footer">
+          <span>STT [1/4] • Captura de Áudio</span>
         </div>
       </div>
     \`;
@@ -334,39 +417,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }, 1000);
   }
 
-  function showSendingHud() {
+  function showSendingHud(actionName = 'STT', extraInfo = 'Enviando áudio comprimido para Gemini STT...') {
     clearInterval(hudRecordingTimer);
-    const hud = ensureHudElement();
-    hud.setAttribute('data-type', 'sending');
-    hud.innerHTML = \`
-      <div class="vocallens-hud-inner">
-        <div class="vocallens-hud-header">
-          <span class="vocallens-hud-spinner"></span>
-          <strong class="vocallens-hud-title">Enviando Áudio...</strong>
-          <span class="vocallens-hud-counter">\${hudSeconds}s</span>
-        </div>
-        <div class="vocallens-hud-sub">Enviando áudio para o modelo Gemini STT</div>
-      </div>
-    \`;
+    showStageHud({
+      actionType: actionName,
+      currentStage: actionName === 'TTS' ? 1 : 2,
+      totalStages: actionName === 'TTS' ? 3 : 4,
+      title: 'Enviando Dados...',
+      subtitle: extraInfo,
+      details: 'Modelo: gemini-3.5-flash-lite (Google Generative AI)',
+      type: 'sending'
+    });
   }
 
-  function showProcessingHud() {
-    const hud = ensureHudElement();
-    hud.setAttribute('data-type', 'processing');
-    hud.innerHTML = \`
-      <div class="vocallens-hud-inner">
-        <div class="vocallens-hud-header">
-          <span class="vocallens-hud-spinner"></span>
-          <strong class="vocallens-hud-title">Processando com Gemini...</strong>
-        </div>
-        <div class="vocallens-hud-sub">Convertendo áudio em texto formatado</div>
-      </div>
-    \`;
+  function showProcessingHud(actionName = 'STT', extraInfo = 'Transcrevendo fala e aplicando pontuação com IA...') {
+    showStageHud({
+      actionType: actionName,
+      currentStage: actionName === 'TTS' ? 2 : 3,
+      totalStages: actionName === 'TTS' ? 3 : 4,
+      title: 'Processando com Gemini...',
+      subtitle: extraInfo,
+      details: 'Latência média: 250ms - 450ms',
+      type: 'processing'
+    });
   }
 
-  // Pop-up HUD de Narração Superior Direito
-  let narrationHudEl = null;
-
+  // -------------------------------------------------------------
+  // POP-UP HUD DE NARRAÇÃO COM CONTROLE DE VELOCIDADE INSTANTÂNEO
+  // -------------------------------------------------------------
   function ensureNarrationHudElement() {
     let hud = document.getElementById('vocallens-narration-hud');
     if (!hud) {
@@ -380,17 +458,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   function showNarrationHud(text, source = 'selection') {
     const hud = ensureNarrationHudElement();
-    const snippet = text.length > 80 ? text.substring(0, 77) + '...' : text;
+    const snippet = text.length > 85 ? text.substring(0, 82) + '...' : text;
     hud.style.display = 'block';
     hud.style.opacity = '1';
+
+    const currentSpd = Number(settings.ttsSpeed || 1.0);
+    const speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5];
+
+    const pillsHtml = speedOptions.map(sp => {
+      const isActive = Math.abs(sp - currentSpd) < 0.05;
+      return \`<button class="vocallens-sp-btn \${isActive ? 'active' : ''}" data-speed="\${sp}">\${sp}x</button>\`;
+    }).join('');
 
     hud.innerHTML = \`
       <div class="vocallens-nhud-header">
         <div style="display:flex; align-items:center; gap:6px;">
           <span class="vocallens-nhud-pulse"></span>
-          <strong class="vocallens-nhud-title">Narrando com Gemini (Voz Neural)</strong>
+          <strong class="vocallens-nhud-title">Narrando com Gemini (\${settings.ttsVoice || 'Kore'})</strong>
         </div>
-        <button id="vocallens-nhud-close" class="vocallens-nhud-close-btn">&times;</button>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span class="vocallens-hud-stage-badge">TTS [3/3]</span>
+          <button id="vocallens-nhud-close" class="vocallens-nhud-close-btn" title="Fechar">&times;</button>
+        </div>
       </div>
 
       <div class="vocallens-nhud-snippet">"\${snippet}"</div>
@@ -402,18 +491,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
       <div class="vocallens-nhud-sliders">
         <div class="vocallens-nhud-row">
-          <span>Velocidade: <strong id="vocallens-speed-val">\${settings.ttsSpeed || 1.0}x</strong></span>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Velocidade de Fala:</span>
+            <strong id="vocallens-speed-val" style="color:#38bdf8; font-family:monospace;">\${currentSpd}x</strong>
+          </div>
           <div class="vocallens-speed-pills">
-            <button class="vocallens-sp-btn" data-speed="0.75">0.75x</button>
-            <button class="vocallens-sp-btn" data-speed="1.0">1x</button>
-            <button class="vocallens-sp-btn" data-speed="1.25">1.25x</button>
-            <button class="vocallens-sp-btn" data-speed="1.5">1.5x</button>
-            <button class="vocallens-sp-btn" data-speed="2.0">2x</button>
+            \${pillsHtml}
           </div>
         </div>
 
         <div class="vocallens-nhud-row">
-          <span>Volume: <strong id="vocallens-vol-val">\${Math.round((settings.ttsVolume ?? 1.0) * 100)}%</strong></span>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Volume da Voz:</span>
+            <strong id="vocallens-vol-val" style="color:#38bdf8; font-family:monospace;">\${Math.round((settings.ttsVolume ?? 1.0) * 100)}%</strong>
+          </div>
           <input type="range" id="vocallens-vol-slider" min="0" max="1" step="0.05" value="\${settings.ttsVolume ?? 1.0}" class="vocallens-slider" />
         </div>
       </div>
@@ -458,14 +549,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       };
     }
 
-    // Botões de Velocidade
+    // CORREÇÃO CRÍTICA DE VELOCIDADE: Atualiza instantaneamente a instância ativa de áudio
     hud.querySelectorAll('.vocallens-sp-btn').forEach(btn => {
       btn.onclick = () => {
         const sp = parseFloat(btn.getAttribute('data-speed'));
         settings.ttsSpeed = sp;
-        if (activeAudioPlayer) activeAudioPlayer.playbackRate = sp;
+
+        // Aplica imediatamente ao player ativo
+        if (activeAudioPlayer) {
+          activeAudioPlayer.playbackRate = sp;
+          activeAudioPlayer.defaultPlaybackRate = sp;
+        }
+
+        // Salva nas configurações
+        if (typeof chrome !== 'undefined' && chrome?.storage?.sync) {
+          chrome.storage.sync.set({ ttsSpeed: sp });
+        }
+
+        // Atualiza visualmente
+        hud.querySelectorAll('.vocallens-sp-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
         const valEl = document.getElementById('vocallens-speed-val');
         if (valEl) valEl.innerText = sp + 'x';
+
+        console.log('[STT&TTS de Satiro] Velocidade de reprodução alterada para:', sp + 'x');
       };
     });
 
@@ -476,6 +584,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const vol = parseFloat(e.target.value);
         settings.ttsVolume = vol;
         if (activeAudioPlayer) activeAudioPlayer.volume = vol;
+        if (typeof chrome !== 'undefined' && chrome?.storage?.sync) {
+          chrome.storage.sync.set({ ttsVolume: vol });
+        }
         const valEl = document.getElementById('vocallens-vol-val');
         if (valEl) valEl.innerText = Math.round(vol * 100) + '%';
       };
@@ -493,13 +604,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   function saveToHistory(text, target, imageBase64 = null) {
     const dateStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     sessionTranscriptions.unshift({
+      id: 'tx-' + Date.now(),
       text: text,
       target: target,
       time: dateStr,
       image: imageBase64
     });
-    if (sessionTranscriptions.length > 30) sessionTranscriptions.pop();
-    if (chrome?.storage?.local) {
+    if (sessionTranscriptions.length > 50) sessionTranscriptions.pop();
+    if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
       chrome.storage.local.set({ sessionTranscriptions });
     }
   }
@@ -508,34 +620,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const hud = ensureHudElement();
     hud.setAttribute('data-type', 'ready');
 
-    // Registrar no histórico de transcrições
-    const dateStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const targetName = targetElement ? (targetElement.id || targetElement.name || targetElement.tagName.toLowerCase()) : 'Campo Livre';
-    
     saveToHistory(transcribedText, targetName);
-
 
     if (targetElement) {
       hud.innerHTML = \`
         <div class="vocallens-hud-inner">
-          <div class="vocallens-hud-header">
-            <span class="vocallens-hud-check">✓</span>
-            <strong class="vocallens-hud-title">Texto Inserido no Campo!</strong>
+          <div class="vocallens-hud-header" style="justify-content: space-between;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span class="vocallens-hud-check">✓</span>
+              <strong class="vocallens-hud-title">Texto Inserido com Sucesso!</strong>
+            </div>
+            <span class="vocallens-hud-stage-badge">STT [4/4]</span>
           </div>
-          <div class="vocallens-hud-sub">Transcrição digitada com sucesso.</div>
+          <div class="vocallens-hud-preview">"\${transcribedText.length > 70 ? transcribedText.substring(0, 67) + '...' : transcribedText}"</div>
+          <div class="vocallens-hud-sub">Inserido no elemento: <strong style="color:#6ee7b7;">\${targetName}</strong></div>
         </div>
       \`;
-      setTimeout(() => hideHud(), 3500);
+      setTimeout(() => hideHud(), 4000);
     } else {
       const snippet = transcribedText.length > 70 ? transcribedText.substring(0, 68) + '...' : transcribedText;
       hud.innerHTML = \`
         <div class="vocallens-hud-inner">
           <div class="vocallens-hud-header" style="justify-content: space-between;">
-            <span class="vocallens-hud-badge-ready">4. Aguardando Alvo / Copiado</span>
-            <button id="vocallens-copy-btn" class="vocallens-hud-btn-copy">Copiar e Preservar</button>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span class="vocallens-hud-check">✓</span>
+              <strong class="vocallens-hud-title">Transcrição Concluída</strong>
+            </div>
+            <button id="vocallens-copy-btn" class="vocallens-hud-btn-copy">Copiar Texto</button>
           </div>
           <div class="vocallens-hud-preview">"\${snippet}"</div>
-          <div class="vocallens-hud-sub">Clique em qualquer campo para auto-digitar ou cole com Ctrl+V (o clipboard anterior será restaurado automaticamente).</div>
+          <div class="vocallens-hud-sub">Clique em qualquer campo para auto-digitar ou use o botão copiar.</div>
         </div>
       \`;
 
@@ -544,27 +659,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         btn.onclick = async (e) => {
           e.stopPropagation();
           try {
-            const previousText = await navigator.clipboard.readText().catch(() => '');
             await navigator.clipboard.writeText(transcribedText);
             btn.innerText = '✓ Copiado';
-            setTimeout(() => { btn.innerText = 'Copiar'; }, 2000);
-
-            // Restaura o clipboard anterior após colar
-            if (previousText && previousText !== transcribedText) {
-              const onPasteRestore = () => {
-                window.removeEventListener('paste', onPasteRestore, true);
-                setTimeout(async () => {
-                  try {
-                    await navigator.clipboard.writeText(previousText);
-                    console.log('[STT&TTS de Satiro] Clipboard anterior restaurado após colar.');
-                  } catch (e) {}
-                }, 300);
-              };
-              window.addEventListener('paste', onPasteRestore, true);
-              setTimeout(() => {
-                window.removeEventListener('paste', onPasteRestore, true);
-              }, 12000);
-            }
+            setTimeout(() => { btn.innerText = 'Copiar Texto'; }, 2000);
           } catch (err) {
             navigator.clipboard.writeText(transcribedText);
           }
@@ -595,6 +692,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
 
+  // Reprodução de áudio com garantia de velocidade no Chrome
   function playAudio(audioBase64, mimeType = 'audio/wav', originalText = '') {
     try {
       if (activeAudioPlayer) {
@@ -604,14 +702,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const audioUrl = audioBase64.startsWith('data:') 
         ? audioBase64 
         : \`data:\${mimeType};base64,\${audioBase64}\`;
+      
       const audio = new Audio(audioUrl);
-      if (settings.ttsSpeed) audio.playbackRate = settings.ttsSpeed;
-      if (settings.ttsVolume !== undefined) audio.volume = settings.ttsVolume;
+      const targetSpeed = Number(settings.ttsSpeed || 1.0);
+      const targetVolume = settings.ttsVolume !== undefined ? Number(settings.ttsVolume) : 1.0;
+
+      audio.playbackRate = targetSpeed;
+      audio.defaultPlaybackRate = targetSpeed;
+      audio.volume = targetVolume;
+
+      // Event listeners para impedir que o Chrome resete playbackRate ao iniciar reprodução
+      audio.addEventListener('loadedmetadata', () => {
+        audio.playbackRate = Number(settings.ttsSpeed || 1.0);
+      });
+      audio.addEventListener('play', () => {
+        audio.playbackRate = Number(settings.ttsSpeed || 1.0);
+      });
+      audio.addEventListener('playing', () => {
+        audio.playbackRate = Number(settings.ttsSpeed || 1.0);
+      });
+      audio.addEventListener('canplay', () => {
+        audio.playbackRate = Number(settings.ttsSpeed || 1.0);
+      });
+
       activeAudioPlayer = audio;
       audio.onended = () => {
         activeAudioPlayer = null;
         hideNarrationHud();
       };
+
       audio.play().catch(e => console.warn('[STT&TTS de Satiro] Falha na reprodução de áudio:', e));
       if (originalText) {
         showNarrationHud(originalText);
@@ -623,7 +742,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // -------------------------------------------------------------
   // MOTOR DE IA DIRETO & FALLBACK INTELIGENTE (SEM ERROS 403 / 404)
-  // Permite que a extensão funcione 100% autônoma sem servidor
   // -------------------------------------------------------------
   function pcm16ToWavBlob(pcmBytes, sampleRate = 24000) {
     const dataLength = pcmBytes.length;
@@ -661,7 +779,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = 'pt-BR';
-      if (settings.ttsSpeed) utter.rate = settings.ttsSpeed;
+      if (settings.ttsSpeed) utter.rate = Number(settings.ttsSpeed);
       window.speechSynthesis.speak(utter);
       showNarrationHud(text, 'browser');
       return true;
@@ -710,27 +828,57 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     'gemini-2.5-flash-lite'
   ];
 
-  async function executeDirectWithFallback(taskName, cascade, action) {
+  async function executeDirectWithFallback(taskName, cascade, payloadInfo, action) {
     let lastErr = null;
     const modelList = cascade || EXT_TTS_CASCADE;
+    const startTime = Date.now();
+
     for (let m = 0; m < modelList.length; m++) {
       const model = modelList[m];
       for (let attempt = 1; attempt <= 3; attempt++) {
+        const attemptStart = Date.now();
         try {
           const res = await action(model);
+          const latency = Date.now() - attemptStart;
+          
+          // Registra Log de API bem sucedido
+          logApiCall({
+            action: taskName,
+            model: model,
+            latencyMs: latency,
+            statusCode: 200,
+            statusText: 'OK',
+            success: true,
+            payloadInfo: payloadInfo || (taskName + ' concluído com sucesso'),
+            mode: 'direct'
+          });
+
           return res;
         } catch (err) {
           lastErr = err;
+          const latency = Date.now() - attemptStart;
           console.warn('[STT&TTS de Satiro ' + taskName + '] Tentativa ' + attempt + '/3 no modelo ' + model + ' falhou:', err);
 
-          // Troca imediata de modelo se for cota excedida (429), modelo não encontrado (404) ou modalidade
+          // Registra Log de API com erro da tentativa
+          logApiCall({
+            action: taskName,
+            model: model,
+            latencyMs: latency,
+            statusCode: isQuotaOrNotFoundError(err) ? 429 : 500,
+            statusText: 'Tentativa ' + attempt + ' falhou: ' + (err.message || 'Erro'),
+            success: false,
+            payloadInfo: payloadInfo,
+            errorMessage: err.message || String(err),
+            mode: 'direct'
+          });
+
           if (isQuotaOrNotFoundError(err)) {
             console.warn('[STT&TTS de Satiro ' + taskName + '] Cota excedida ou modelo ' + model + ' indisponível. Alternando para o próximo modelo...');
             break;
           }
 
-          if (attempt < 3 && isRetryableHttpError(err)) {
-            await new Promise(r => setTimeout(r, attempt * 400));
+          if (attempt < 3) {
+            await new Promise(r => setTimeout(r, attempt * 350));
           } else {
             break;
           }
@@ -738,6 +886,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
       console.warn('[STT&TTS de Satiro ' + taskName + '] Tentativas concluídas no modelo ' + model + '. Alternando para o próximo modelo de fallback.');
     }
+
     console.error('[STT&TTS de Satiro ' + taskName + '] Falha em todos os modelos de fallback.');
     let msg = lastErr?.message || 'Erro desconhecido';
     if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
@@ -767,9 +916,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       fullInstruction = '[Instrução da Voz: ' + voiceInstruction + ']\\n' + fullInstruction;
     }
     const prompt = fullInstruction + '\\n' + text;
+    const payloadInfo = 'Texto: ' + text.length + ' chars | Voz: ' + baseVoiceName;
 
     // Cascade de síntese neural TTS
-    return await executeDirectWithFallback('TTS', EXT_TTS_CASCADE, async (modelName) => {
+    return await executeDirectWithFallback('TTS', EXT_TTS_CASCADE, payloadInfo, async (modelName) => {
       const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + encodeURIComponent(settings.apiKey);
       const res = await fetch(url, {
         method: 'POST',
@@ -806,9 +956,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const cleanBase64 = audioBase64.includes(',') ? audioBase64.split(',')[1] : audioBase64;
     const cleanMime = (mimeType || 'audio/webm').split(';')[0];
     const prompt = settings.transcriberInstruction || 'Transcreva com fidelidade absoluta o áudio recebido. Retorne apenas o texto transcrito, sem introduções ou aspas.';
+    const payloadInfo = 'Áudio base64 (' + Math.round(cleanBase64.length / 1024) + ' KB, ' + cleanMime + ')';
 
     // Cascade de transcrição de áudio STT
-    return await executeDirectWithFallback('STT', EXT_STT_CASCADE, async (modelName) => {
+    return await executeDirectWithFallback('STT', EXT_STT_CASCADE, payloadInfo, async (modelName) => {
       const url = \`https://generativelanguage.googleapis.com/v1beta/models/\${modelName}:generateContent?key=\${encodeURIComponent(settings.apiKey)}\`;
       const res = await fetch(url, {
         method: 'POST',
@@ -838,10 +989,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   async function directGeminiVision(imageBase64) {
     if (!settings.apiKey) throw new Error('Sem chave de API configurada');
     const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
-    const prompt = settings.visionInstruction || 'Analise detalhadamente a imagem capturada da tela com o Google Lens e descreva os textos e elementos visuais com clareza.';
+    const prompt = settings.visionInstruction || 'Analise detalhadamente a imagem capturada da tela com o Google Lens e descreva os textos e elementos visuais com clareza em português.';
+    const payloadInfo = 'Imagem PNG recortada (' + Math.round(cleanBase64.length / 1024) + ' KB)';
 
     // Cascade de análise visual OCR/Vision
-    return await executeDirectWithFallback('Vision', EXT_VISION_CASCADE, async (modelName) => {
+    return await executeDirectWithFallback('Vision', EXT_VISION_CASCADE, payloadInfo, async (modelName) => {
       const url = \`https://generativelanguage.googleapis.com/v1beta/models/\${modelName}:generateContent?key=\${encodeURIComponent(settings.apiKey)}\`;
       const res = await fetch(url, {
         method: 'POST',
@@ -868,23 +1020,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
   }
 
-  // Funcao centralizada de narração por Gemini TTS ou Fallback
+  // -------------------------------------------------------------
+  // REQUISITO 1: NARRAÇÃO DE TEXTO SELECIONADO COM ESTÁGIOS E HUD
+  // -------------------------------------------------------------
   async function narrateSelection(selectedText) {
     if (!selectedText || !selectedText.trim()) {
-      showHud('Selecione um texto antes de iniciar a narração.', '⚠️', 2500, 'warning');
+      showHud('Selecione um texto na página antes de iniciar a narração.', '⚠️', 3000, 'warning');
       return;
     }
 
     const textToNarrate = selectedText.trim();
-    showHud('Sintetizando narração com Gemini TTS (' + settings.ttsVoice + ')...', '✨', 0, 'loading');
+    
+    // Estágio 1/3: Enviando
+    showSendingHud('TTS', 'Enviando texto (' + textToNarrate.length + ' caracteres) para Gemini TTS...');
 
     let narrated = false;
 
     // 1. PRIORIDADE MÁXIMA: Conexão Direta com API Gemini (Sem Servidor)
     if (settings.apiKey && settings.apiKey.trim()) {
       try {
+        // Estágio 2/3: Processando
+        showProcessingHud('TTS', 'Sintetizando áudio neural com a voz ' + (settings.ttsVoice || 'Kore') + '...');
         const wavBase64 = await directGeminiTTS(textToNarrate);
-        showHud('Narrando seleção (Voz Neural ' + settings.ttsVoice + ')...', '🔊', 3000, 'success');
+
+        // Estágio 3/3: Narrando
+        showStageHud({
+          actionType: 'TTS',
+          currentStage: 3,
+          totalStages: 3,
+          title: 'Narrando com Gemini',
+          subtitle: 'Voz Neural: ' + (settings.ttsVoice || 'Kore') + ' (24kHz PCM)',
+          icon: 'pulse',
+          type: 'ready',
+          duration: 3000
+        });
+
         playAudio(wavBase64, 'audio/wav', textToNarrate);
         narrated = true;
       } catch (apiErr) {
@@ -892,9 +1062,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     }
 
-    // 2. Servidor Backend Opcional (apenas se configurado e modo direto não rodou)
+    // 2. Servidor Backend Opcional (apenas se configurado)
     if (!narrated && settings.serverUrl && settings.serverUrl.trim() && !settings.serverUrl.includes('localhost:3000')) {
       try {
+        showProcessingHud('TTS', 'Sintetizando via backend local...');
         const res = await fetch(\`\${settings.serverUrl}/api/tts\`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -909,7 +1080,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.audioBase64) {
-            showHud('Narrando seleção...', '🔊', 3000, 'success');
             playAudio(data.audioBase64, data.mimeType || 'audio/wav', textToNarrate);
             narrated = true;
           }
@@ -924,17 +1094,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const spoken = speakFallbackNative(textToNarrate);
       if (spoken) {
         if (!settings.apiKey) {
-          showHud('Narrando com voz local. Cole sua Chave Gemini no ícone da extensão para vozes neurais!', '🔊', 5000, 'info');
+          showHud('Narrando com voz local do navegador. Adicione sua Chave Gemini para vozes neurais!', '🔊', 5000, 'info');
         } else {
-          showHud('Narrando seleção...', '🔊', 3000, 'info');
+          showHud('Narrando com voz alternativa...', '🔊', 3000, 'info');
         }
       } else {
-        showHud('Abra o ícone da extensão e insira sua Chave Gemini para narrar!', '🔑', 5000, 'warning');
+        showHud('Insira sua Chave Gemini no ícone da extensão para narrar!', '🔑', 5000, 'warning');
       }
     }
   }
 
-  // Listener de mensagens do Service Worker (ex: Clique no Menu de Contexto do Botão Direito)
+  // Listener de mensagens do Service Worker
   if (typeof chrome !== 'undefined' && chrome?.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (request.action === 'narrate_selected_text') {
@@ -1000,9 +1170,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   document.addEventListener('scroll', hideFloatingMenu, true);
 
-  // -------------------------------------------------------------
-  // REQUISITO 1: Atalho Configurável -> Narra seleção de texto com Gemini TTS
-  // -------------------------------------------------------------
+  // Atalho Configurável (Ctrl + B)
   document.addEventListener('keydown', async (e) => {
     if (!settings.enableCtrlB) return;
     
@@ -1021,7 +1189,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   });
 
   // -------------------------------------------------------------
-  // REQUISITO 2: Ctrl + Shift + Arrastar -> GOOGLE LENS VISION
+  // REQUISITO 2: GOOGLE LENS VISION COM ESTÁGIOS [1/4] A [4/4]
   // -------------------------------------------------------------
   function createSelectionOverlay() {
     if (overlayEl) return;
@@ -1050,7 +1218,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   document.addEventListener('mousedown', (e) => {
     if (!settings.enableCtrlDrag) return;
-    // Dispara com Ctrl + Shift pressionados e botão esquerdo
     if ((e.ctrlKey && e.shiftKey) && e.button === 0) {
       isSelectingArea = true;
       startX = e.clientX;
@@ -1097,10 +1264,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     };
 
     if (overlayEl) overlayEl.style.display = 'none';
-
     if (rect.width < 15 || rect.height < 15) return;
 
-    showHud('Google Lens: Capturando foto da área...', '📸', 0, 'loading');
+    // Estágio 1/4: Capturando
+    showStageHud({
+      actionType: 'Lens',
+      currentStage: 1,
+      totalStages: 4,
+      title: 'Capturando Área da Tela...',
+      subtitle: 'Dimensões: ' + Math.round(rect.width) + 'x' + Math.round(rect.height) + 'px',
+      icon: '📸',
+      type: 'sending'
+    });
 
     chrome.runtime.sendMessage({ action: 'capture_visible_tab' }, async (response) => {
       if (!response || !response.success || !response.dataUrl) {
@@ -1108,23 +1283,52 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
-      showHud('Google Lens: Analisando com Gemini Vision...', '🧠', 0, 'loading');
+      // Estágio 2/4: Enviando
+      showStageHud({
+        actionType: 'Lens',
+        currentStage: 2,
+        totalStages: 4,
+        title: 'Enviando Recorte Visual...',
+        subtitle: 'Enviando imagem para Gemini Vision (gemini-3.5-flash-lite)...',
+        icon: '🚀',
+        type: 'sending'
+      });
+
       const croppedBase64 = await cropImage(response.dataUrl, rect);
 
       let processed = false;
 
-      // 1. PRIORIDADE: Conexão Direta à API Gemini (Sem Servidor)
+      // 1. PRIORIDADE: Conexão Direta à API Gemini
       if (settings.apiKey && settings.apiKey.trim()) {
         try {
-          showHud('Google Lens: Analisando via Gemini Direto...', '✨', 0, 'loading');
+          // Estágio 3/4: Processando Análise Visual
+          showStageHud({
+            actionType: 'Lens',
+            currentStage: 3,
+            totalStages: 4,
+            title: 'Interpretando Imagem com IA...',
+            subtitle: 'Extraindo textos, contexto e elementos visuais...',
+            icon: '🧠',
+            type: 'processing'
+          });
+
           const description = await directGeminiVision(croppedBase64);
           if (description) {
-            showHud('Google Lens: ' + description.substring(0, 70) + '...', '👁️', 4000, 'info');
+            // Estágio 4/4: Sintetizando e Narrando
+            showStageHud({
+              actionType: 'Lens',
+              currentStage: 4,
+              totalStages: 4,
+              title: 'Narrando Leitura do Google Lens...',
+              subtitle: 'Sintetizando voz neural do resultado visual...',
+              icon: '🔊',
+              type: 'ready',
+              duration: 3500
+            });
+
             try {
-              showHud('Google Lens: Sintetizando áudio neural...', '🔊', 0, 'loading');
               const wavBase64 = await directGeminiTTS(description);
-              showHud('Google Lens: Narrando...', '🔊', 3000, 'success');
-              playAudio(wavBase64, 'audio/wav');
+              playAudio(wavBase64, 'audio/wav', description);
             } catch {
               speakFallbackNative(description);
             }
@@ -1154,9 +1358,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           if (res.ok) {
             const data = await res.json();
             if (data.success) {
-              showHud('Google Lens: Narrando conteúdo visual...', '🔊', 4000, 'success');
               if (data.audioBase64) {
-                playAudio(data.audioBase64, data.mimeType || 'audio/wav');
+                playAudio(data.audioBase64, data.mimeType || 'audio/wav', data.text);
               }
               saveToHistory(data.text || 'Análise visual narrada via servidor', 'Google Lens', croppedBase64);
               processed = true;
@@ -1168,7 +1371,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
 
       if (!processed) {
-        showHud('Abra o ícone do STT&TTS de Satiro e cole sua Chave Gemini para ativar a IA!', '🔑', 5000, 'warning');
+        showHud('Insira sua Chave Gemini no ícone da extensão para ativar o Google Lens!', '🔑', 5000, 'warning');
       }
     });
   }
@@ -1203,7 +1406,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   // -------------------------------------------------------------
-  // REQUISITO 3: Pause / Break OU Ctrl + Shift + Espaço -> Gravar e Transcrever
+  // REQUISITO 3: PAUSE / BREAK OU CTRL + SHIFT + ESPAÇO -> STT COM ESTÁGIOS
   // -------------------------------------------------------------
   function isRecordingToggleKey(e) {
     const sc = settings.shortcutRecordConfig;
@@ -1215,7 +1418,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (match) return true;
     }
 
-    // Fallback padrão se não configurado
     const isPause = (
       e.key === 'Pause' ||
       e.code === 'Pause' ||
@@ -1227,7 +1429,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     );
     if (isPause) return true;
 
-    // 2. Atalho universal alternativo para notebooks e teclados compactos: Ctrl + Shift + Espaço
     if (e.ctrlKey && e.shiftKey && (e.code === 'Space' || e.key === ' ' || e.keyCode === 32)) {
       return true;
     }
@@ -1254,7 +1455,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       targetInputElement = isTextInputElement(active) ? active : null;
 
       try {
-        // Solicita o microfone
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioChunks = [];
         mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
@@ -1266,26 +1466,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         mediaRecorder.onstop = async () => {
           stream.getTracks().forEach(track => track.stop());
           const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-          showSendingHud();
+          
+          // Estágio 2/4: Enviando
+          showSendingHud('STT', 'Enviando áudio gravado (' + hudSeconds + 's) para Gemini STT...');
 
           const reader = new FileReader();
           reader.onloadend = async () => {
-            showProcessingHud();
+            // Estágio 3/4: Processando
+            showProcessingHud('STT', 'Transcrevendo fala e aplicando pontuação com Gemini...');
             const base64Audio = reader.result;
 
             let transcribedText = null;
 
-            // 1. PRIORIDADE: Conexão Direta com API Gemini (Sem Servidor)
+            // 1. PRIORIDADE: Conexão Direta com API Gemini
             if (settings.apiKey && settings.apiKey.trim()) {
               try {
-                showHud('Transcrevendo via Gemini Direto...', '✨', 0, 'loading');
                 transcribedText = await directGeminiSTT(base64Audio, 'audio/webm');
               } catch (apiErr) {
                 console.warn('[STT&TTS de Satiro] Falha na transcrição direta:', apiErr);
               }
             }
 
-            // 2. Servidor Backend Opcional (apenas se configurado e modo direto não rodou)
+            // 2. Servidor Backend Opcional
             if (!transcribedText && settings.serverUrl && settings.serverUrl.trim() && !settings.serverUrl.includes('localhost:3000')) {
               try {
                 const res = await fetch(\`\${settings.serverUrl}/api/stt\`, {
@@ -1310,6 +1512,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               }
             }
 
+            // Estágio 4/4: Concluído
             if (transcribedText) {
               if (targetInputElement) {
                 insertTranscribedText(targetInputElement, transcribedText);
@@ -1318,7 +1521,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 showReadyToTypeHud(transcribedText, null);
               }
             } else {
-              showHud('Abra o ícone do STT&TTS de Satiro e cole sua Chave Gemini para transcrever!', '🔑', 5000, 'warning');
+              showHud('Insira sua Chave Gemini no ícone da extensão para transcrever!', '🔑', 5000, 'warning');
             }
           };
           reader.readAsDataURL(audioBlob);
@@ -1330,9 +1533,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         showRecordingHud(Boolean(targetInputElement));
 
       } catch (err) {
-        // Explica claramente caso o microfone esteja bloqueado pelo navegador
         console.warn('[STT&TTS de Satiro] Permissão de microfone negada ou erro:', err);
-        showHud('Microfone bloqueado! Clique no ícone do STT&TTS de Satiro no canto superior direito para conceder permissão.', '🎙️❌', 5500, 'warning');
+        showHud('Microfone bloqueado! Clique no ícone da extensão para permitir.', '🎙️❌', 5500, 'warning');
       }
 
     } else {
@@ -1799,7 +2001,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   {
     filename: 'popup.html',
     path: 'popup.html',
-    description: 'Popup moderno com Console TTS, Histórico, Gravação Direta e Links Funcionais',
+    description: 'Popup moderno com Console TTS, Histórico, Telemetria de API, Gravação Direta e Links Funcionais',
     language: 'html',
     content: `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -1809,7 +2011,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 350px;
+      width: 360px;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #090d16;
       color: #f1f5f9;
@@ -2004,10 +2206,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     .speed-pills {
       display: flex;
-      gap: 4px;
+      gap: 3px;
+      flex-wrap: wrap;
     }
     .speed-pill {
       flex: 1;
+      min-width: 34px;
       background: #1e293b;
       border: 1px solid #334155;
       color: #cbd5e1;
@@ -2017,6 +2221,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       text-align: center;
       border-radius: 4px;
       cursor: pointer;
+      user-select: none;
+      transition: all 0.15s;
+    }
+    .speed-pill:hover {
+      background: #334155;
+      color: #fff;
     }
     .speed-pill.active {
       background: #0284c7;
@@ -2047,6 +2257,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     .btn-test:hover { background: #0369a1; }
     .btn-stop { background: #dc2626; color: white; display: none; }
     .btn-stop:hover { background: #b91c1c; }
+
+    /* Sub-abas de Histórico e Logs */
+    .sub-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 8px;
+      background: #0f172a;
+      padding: 3px;
+      border-radius: 6px;
+      border: 1px solid #1e293b;
+    }
+    .sub-tab-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 4px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .sub-tab-btn.active {
+      background: #1e293b;
+      color: #38bdf8;
+    }
 
     /* Histórico */
     .history-list {
@@ -2092,6 +2328,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       padding: 2px 6px;
       border-radius: 4px;
       cursor: pointer;
+    }
+
+    /* Log de API */
+    .api-log-item {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 10px;
+      font-family: monospace;
+      margin-bottom: 4px;
+    }
+    .api-log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .api-log-badge {
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-weight: 700;
+      font-size: 9px;
+    }
+    .api-log-badge.success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .api-log-badge.error { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .api-log-sub {
+      color: #94a3b8;
+      font-size: 9px;
+      display: flex;
+      justify-content: space-between;
     }
 
     /* Botões Principais */
@@ -2150,8 +2417,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   </div>
 
   <div class="popup-tabs">
-    <button class="popup-tab-btn active" data-tab="tab-control">🎛️ Voz</button>
-    <button class="popup-tab-btn" data-tab="tab-history">📜 Logs (<span id="histCount">0</span>)</button>
+    <button class="popup-tab-btn active" data-tab="tab-control">🎛️ Voz &amp; Ações</button>
+    <button class="popup-tab-btn" data-tab="tab-history">📜 Logs &amp; API (<span id="histCount">0</span>)</button>
     <button class="popup-tab-btn" data-tab="tab-config">⚙️ Chave</button>
     <button class="popup-tab-btn" data-tab="tab-update">🔄 GitHub</button>
   </div>
@@ -2161,8 +2428,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     <!-- Banner de Status da Chave Gemini -->
     <div id="apiKeyBanner" class="api-key-banner saved">
       <div class="api-banner-title">
-        <span id="apiKeyBannerTitle">⚡ Chave Obtida (.env)</span>
-        <span id="apiKeyBannerState" style="font-size:10px; opacity:0.8;">Ativa</span>
+        <span id="apiKeyBannerTitle">⚡ Chave Gemini Ativa (.env)</span>
+        <span id="apiKeyBannerState" style="font-size:10px; opacity:0.8;">Modo Direto</span>
       </div>
       <div id="apiKeyBannerBody">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px; font-family:monospace; font-size:11px; color:#34d399; background:#020617; padding:5px 8px; border-radius:6px; border:1px solid #1e293b;" id="maskedKeyDisplay">
@@ -2179,7 +2446,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       <span id="micTimer" style="display:none; font-family:monospace; margin-left:auto;">0s</span>
     </button>
     <div id="micStatusSub" style="font-size:10px; color:#94a3b8; text-align:center; margin-top:-8px; margin-bottom:10px;">
-      Clique para ditar e transcrever via Gemini STT
+      Clique para ditar e transcrever via Gemini STT com HUD flutuante
     </div>
 
     <!-- Console de Controle TTS -->
@@ -2187,7 +2454,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       <div class="form-group">
         <label>Voz Neural Gemini</label>
         <select id="voiceSelect">
-          <option value="Kore">Kore (Equilibrada e Humana)</option>
+          <option value="Kore">Kore (Equilibrada e Humana - Padrão)</option>
           <option value="Puck">Puck (Dinâmica e Jovem)</option>
           <option value="Charon">Charon (Grave e Serena)</option>
           <option value="Fenrir">Fenrir (Forte e Firme)</option>
@@ -2196,12 +2463,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       </div>
 
       <div class="form-group">
-        <label>Velocidade de Fala</label>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <label style="margin-bottom:0;">Velocidade de Reprodução</label>
+          <span id="popupSpeedBadge" style="font-family:monospace; font-size:11px; color:#38bdf8; font-weight:bold;">1.0x</span>
+        </div>
         <div class="speed-pills">
-          <div class="speed-pill" data-speed="0.8">0.8x</div>
+          <div class="speed-pill" data-speed="0.5">0.5x</div>
+          <div class="speed-pill" data-speed="0.75">0.75x</div>
           <div class="speed-pill active" data-speed="1.0">1.0x</div>
-          <div class="speed-pill" data-speed="1.2">1.2x</div>
+          <div class="speed-pill" data-speed="1.25">1.25x</div>
           <div class="speed-pill" data-speed="1.5">1.5x</div>
+          <div class="speed-pill" data-speed="1.75">1.75x</div>
+          <div class="speed-pill" data-speed="2.0">2.0x</div>
+          <div class="speed-pill" data-speed="2.5">2.5x</div>
         </div>
       </div>
 
@@ -2211,60 +2485,59 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       </div>
     </div>
 
-    <!-- Criar & Adicionar Nova Voz Neural Customizada -->
-    <div class="tts-box" style="margin-top:8px;">
-      <div style="font-size:11px; font-weight:bold; color:#38bdf8; margin-bottom:4px; display:flex; align-items:center; justify-content:space-between;">
-        <span>➕ Adicionar Voz Personalizada</span>
-        <button id="toggleCustomVoiceFormBtn" type="button" style="background:none; border:none; color:#38bdf8; font-size:10px; cursor:pointer; font-weight:bold;">+ Expandir</button>
-      </div>
-      <div id="customVoiceFormContainer" style="display:none; flex-direction:column; gap:6px; margin-top:6px;">
-        <input type="text" id="newVoiceNameInput" placeholder="Nome da Voz (ex: Satiro Emotivo)" style="font-size:11px; padding:6px; background:#0f172a; border:1px solid #334155; color:#fff; border-radius:6px; width:100%;" />
-        <select id="newVoiceBaseSelect" style="font-size:11px; padding:6px; background:#0f172a; border:1px solid #334155; color:#fff; border-radius:6px; width:100%;">
-          <option value="Kore">Kore (Base Feminina Equilibrada)</option>
-          <option value="Puck">Puck (Base Masculina Enérgica)</option>
-          <option value="Charon">Charon (Base Grave Serena)</option>
-          <option value="Fenrir">Fenrir (Base Forte e Firme)</option>
-          <option value="Zephyr">Zephyr (Base Suave e Calma)</option>
-          <option value="Aoede">Aoede (Base Expressiva)</option>
-          <option value="Calliope">Calliope (Base Melódica)</option>
-          <option value="Orpheus">Orpheus (Base Narrador)</option>
-        </select>
-        <textarea id="newVoiceInstInput" placeholder="Instrução especial (ex: Fale em tom sereno, acolhedor e articulado)" rows="2" style="font-size:10px; padding:6px; background:#0f172a; border:1px solid #334155; color:#fff; border-radius:6px; font-family:sans-serif; width:100%; resize:none;"></textarea>
-        <input type="text" id="newVoiceTestTextInput" value="Demonstração da nova voz neural customizada no STT&TTS de Satiro." style="font-size:10px; padding:6px; background:#0f172a; border:1px solid #334155; color:#cbd5e1; border-radius:6px; width:100%;" />
-        <div style="display:flex; gap:6px;">
-          <button id="testNewVoiceBtn" type="button" class="btn-action btn-test" style="flex:1; font-size:10px;">▶️ Testar Voz</button>
-          <button id="saveNewVoiceBtn" type="button" class="btn-action" style="flex:1; font-size:10px; background:#0284c7; color:#fff;">➕ Salvar Voz</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Atalhos da Extensão -->
+    <!-- Atalhos da Extensão com Estágios Informativos -->
     <div class="shortcut-list">
       <div class="shortcut-card">
-        <span>Narra Seleção</span>
+        <div>
+          <div style="font-weight:600; color:#f8fafc;">Narra Seleção (TTS)</div>
+          <div style="font-size:9px; color:#94a3b8;">Estágios: Enviando ➔ Síntese ➔ Narrando</div>
+        </div>
         <span class="badge">Ctrl + B</span>
       </div>
       <div class="shortcut-card">
-        <span>Google Lens Vision</span>
+        <div>
+          <div style="font-weight:600; color:#38bdf8;">Google Lens Vision</div>
+          <div style="font-size:9px; color:#94a3b8;">Estágios: Recorte ➔ Envio ➔ IA ➔ Narração</div>
+        </div>
         <span class="badge" style="color:#38bdf8;">Ctrl + Shift + Arrastar</span>
       </div>
       <div class="shortcut-card">
-        <span>Gravar no Campo</span>
+        <div>
+          <div style="font-weight:600; color:#fca5a5;">Gravar no Campo (STT)</div>
+          <div style="font-size:9px; color:#94a3b8;">Estágios: Captura ➔ Envio ➔ IA ➔ Inserção</div>
+        </div>
         <span class="badge" style="color:#fca5a5;">Pause OU Ctrl+Shift+Espaço</span>
       </div>
     </div>
   </div>
 
-  <!-- ABA 2: HISTÓRICO RECENTE -->
+  <!-- ABA 2: HISTÓRICO & TELEMETRIA API -->
   <div id="tab-history" class="tab-pane">
-    <div id="historyList" class="history-list">
-      <div style="text-align:center; padding:24px 8px; color:#64748b; font-size:11px;">
-        Nenhuma fala gravada ainda.<br>Pressione Pause em qualquer campo para transcrever.
+    <div class="sub-tabs">
+      <button class="sub-tab-btn active" id="subTabHistoryBtn">🎙️ Transcrições</button>
+      <button class="sub-tab-btn" id="subTabApiLogsBtn">⚡ Telemetria API Gemini</button>
+    </div>
+
+    <!-- Lista de Transcrições -->
+    <div id="historyViewContainer">
+      <div id="historyList" class="history-list">
+        <div style="text-align:center; padding:24px 8px; color:#64748b; font-size:11px;">
+          Nenhuma fala gravada ainda.<br>Pressione Pause em qualquer campo para transcrever.
+        </div>
+      </div>
+    </div>
+
+    <!-- Lista de Logs de API -->
+    <div id="apiLogsViewContainer" style="display:none;">
+      <div id="apiLogsList" class="history-list">
+        <div style="text-align:center; padding:24px 8px; color:#64748b; font-size:11px;">
+          Nenhuma requisição de API registrada ainda.<br>Faça uma narração ou transcrição para ver os logs.
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- ABA 3: CONEXÃO & ACESSO WEB -->
+  <!-- ABA 3: CONEXÃO & CONFIGURAÇÃO -->
   <div id="tab-config" class="tab-pane">
     <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:10px; margin-bottom:10px;">
       <label>🔑 Chave Obtida do Arquivo (.env)</label>
@@ -2276,7 +2549,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         <button id="quickSaveApiKeyBtn" type="button" class="btn-action btn-test" style="width:auto; padding:4px 10px; font-size:11px;">Salvar</button>
       </div>
       <button id="validateApiKeyBtn" class="btn-full btn-web" style="margin-bottom:4px; font-size:11px;">
-        <span>🔍 Validar Chave de .env</span>
+        <span>🔍 Validar Chave no Google Gemini</span>
       </button>
       <div id="apiKeyValidationMsg" style="font-size:10px; margin-top:4px; text-align:center; color:#94a3b8;">
         Lida exclusivamente do arquivo .env na raiz do projeto.
@@ -2429,18 +2702,67 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     'gemini-2.5-flash-lite'
   ];
 
-  async function executePopupFallback(taskName, cascade, action) {
+  function savePopupApiLog(entry) {
+    chrome.storage.local.get({ apiLogs: [] }, (res) => {
+      const logs = res.apiLogs || [];
+      const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      logs.unshift({
+        id: 'pop-' + Date.now(),
+        timestamp: Date.now(),
+        timeFormatted: timeStr,
+        action: entry.action,
+        model: entry.model,
+        latencyMs: entry.latencyMs,
+        statusCode: entry.statusCode || 200,
+        statusText: entry.statusText || 'OK',
+        success: Boolean(entry.success),
+        payloadInfo: entry.payloadInfo || '',
+        errorMessage: entry.errorMessage || null,
+        mode: 'direct'
+      });
+      if (logs.length > 50) logs.pop();
+      chrome.storage.local.set({ apiLogs: logs }, () => {
+        if (typeof loadApiLogs === 'function') loadApiLogs();
+      });
+    });
+  }
+
+  async function executePopupFallback(taskName, cascade, payloadInfo, action) {
     let lastErr = null;
     const modelList = cascade || POPUP_TTS_CASCADE;
     for (let m = 0; m < modelList.length; m++) {
       const model = modelList[m];
       for (let attempt = 1; attempt <= 3; attempt++) {
+        const start = Date.now();
         try {
-          return await action(model);
+          const res = await action(model);
+          const latency = Date.now() - start;
+          savePopupApiLog({
+            action: taskName,
+            model: model,
+            latencyMs: latency,
+            statusCode: 200,
+            statusText: 'OK',
+            success: true,
+            payloadInfo: payloadInfo
+          });
+          return res;
         } catch (err) {
           lastErr = err;
+          const latency = Date.now() - start;
           console.warn('[Popup ' + taskName + '] Tentativa ' + attempt + '/3 no modelo ' + model + ' falhou:', err);
           
+          savePopupApiLog({
+            action: taskName,
+            model: model,
+            latencyMs: latency,
+            statusCode: isQuotaOrNotFoundError(err) ? 429 : 500,
+            statusText: 'Falha: ' + (err.message || 'Erro'),
+            success: false,
+            payloadInfo: payloadInfo,
+            errorMessage: err.message
+          });
+
           if (isQuotaOrNotFoundError(err)) {
             console.warn('[Popup ' + taskName + '] Cota excedida ou modelo ' + model + ' indisponível. Alternando para o próximo modelo...');
             break;
@@ -2484,8 +2806,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       fullPrompt = '[Instrução da Voz: ' + voiceInstruction + ']\\n' + fullPrompt;
     }
     fullPrompt += '\\n' + text;
+    const payloadInfo = 'Texto: ' + text.length + ' chars | Voz: ' + baseVoiceName;
 
-    return await executePopupFallback('TTS', POPUP_TTS_CASCADE, async (modelName) => {
+    return await executePopupFallback('TTS', POPUP_TTS_CASCADE, payloadInfo, async (modelName) => {
       const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + currentSettings.apiKey;
       const res = await fetch(url, {
         method: 'POST',
@@ -2535,8 +2858,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (!currentSettings.apiKey) throw new Error('Chave Gemini não configurada');
     const cleanBase64 = base64Audio.includes(',') ? base64Audio.split(',')[1] : base64Audio;
     const promptText = currentSettings.transcriberInstruction || 'Transcreva com precisão o que foi dito neste áudio em português.';
+    const payloadInfo = 'Áudio base64 (' + Math.round(cleanBase64.length / 1024) + ' KB)';
 
-    return await executePopupFallback('STT', POPUP_STT_CASCADE, async (modelName) => {
+    return await executePopupFallback('STT', POPUP_STT_CASCADE, payloadInfo, async (modelName) => {
       const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + currentSettings.apiKey;
       const res = await fetch(url, {
         method: 'POST',
@@ -2845,6 +3169,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
   }
 
+  // Sub-abas de Histórico e Logs
+  const subTabHistoryBtn = document.getElementById('subTabHistoryBtn');
+  const subTabApiLogsBtn = document.getElementById('subTabApiLogsBtn');
+  const historyViewContainer = document.getElementById('historyViewContainer');
+  const apiLogsViewContainer = document.getElementById('apiLogsViewContainer');
+
+  if (subTabHistoryBtn && subTabApiLogsBtn) {
+    subTabHistoryBtn.addEventListener('click', () => {
+      subTabHistoryBtn.classList.add('active');
+      subTabApiLogsBtn.classList.remove('active');
+      if (historyViewContainer) historyViewContainer.style.display = 'block';
+      if (apiLogsViewContainer) apiLogsViewContainer.style.display = 'none';
+      loadHistory();
+    });
+
+    subTabApiLogsBtn.addEventListener('click', () => {
+      subTabApiLogsBtn.classList.add('active');
+      subTabHistoryBtn.classList.remove('active');
+      if (historyViewContainer) historyViewContainer.style.display = 'none';
+      if (apiLogsViewContainer) apiLogsViewContainer.style.display = 'block';
+      loadApiLogs();
+    });
+  }
+
   // Carregar Histórico
   function loadHistory() {
     chrome.storage.local.get({ sessionTranscriptions: [] }, (res) => {
@@ -2864,7 +3212,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
-      container.innerHTML = list.slice(0, 6).map(item => \`
+      container.innerHTML = list.slice(0, 8).map(item => \`
         <div class="history-item">
           <div class="history-top">
             <span style="color:#34d399; font-weight:600;">\${item.target || 'Campo'}</span>
@@ -2895,6 +3243,38 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   loadHistory();
 
+  // Carregar Logs e Telemetria de API
+  function loadApiLogs() {
+    chrome.storage.local.get({ apiLogs: [] }, (res) => {
+      const logs = res.apiLogs || [];
+      const container = document.getElementById('apiLogsList');
+      if (!container) return;
+
+      if (logs.length === 0) {
+        container.innerHTML = \`
+          <div style="text-align:center; padding:24px 8px; color:#64748b; font-size:11px;">
+            Nenhuma requisição de API registrada ainda.<br>Realize uma ação para visualizar a telemetria.
+          </div>
+        \`;
+        return;
+      }
+
+      container.innerHTML = logs.slice(0, 10).map(item => \`
+        <div class="api-log-item">
+          <div class="api-log-header">
+            <span style="font-weight:700; color:#f8fafc;">\${item.action} • \${item.model}</span>
+            <span class="api-log-badge \${item.success ? 'success' : 'error'}">\${item.statusCode} \${item.statusText}</span>
+          </div>
+          <div class="api-log-sub">
+            <span style="color:#38bdf8;">\${item.latencyMs}ms | \${item.payloadInfo}</span>
+            <span>\${item.timeFormatted}</span>
+          </div>
+          \${item.errorMessage ? \`<div style="color:#f87171; font-size:9px; margin-top:2px;">Erro: \${item.errorMessage}</div>\` : ''}
+        </div>
+      \`).join('');
+    });
+  }
+
   // Mudança de voz
   const voiceSelect = document.getElementById('voiceSelect');
   if (voiceSelect) {
@@ -2904,14 +3284,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
   }
 
-  // Mudança de velocidade
+  // CORREÇÃO CRÍTICA DE VELOCIDADE NO POPUP (Persistência Imediata e Re-aplicação Robusta)
   document.querySelectorAll('.speed-pill').forEach(pill => {
     pill.addEventListener('click', () => {
+      const sp = parseFloat(pill.dataset.speed);
+      currentSettings.ttsSpeed = sp;
+      
       document.querySelectorAll('.speed-pill').forEach(p => p.classList.remove('active'));
       pill.classList.add('active');
-      currentSettings.ttsSpeed = parseFloat(pill.dataset.speed);
-      chrome.storage.sync.set({ ttsSpeed: currentSettings.ttsSpeed });
-      if (activeAudio) activeAudio.playbackRate = currentSettings.ttsSpeed;
+
+      chrome.storage.sync.set({ ttsSpeed: sp });
+
+      if (activeAudio) {
+        activeAudio.playbackRate = sp;
+        activeAudio.defaultPlaybackRate = sp;
+      }
+      console.log('[Popup STT&TTS] Velocidade alterada para:', sp + 'x');
     });
   });
 
@@ -2934,8 +3322,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (currentSettings.apiKey && currentSettings.apiKey.trim()) {
       try {
         const wavBase64 = await directGeminiTTS(sampleText);
-        activeAudio = new Audio('data:audio/wav;base64,' + wavBase64);
-        if (currentSettings.ttsSpeed) activeAudio.playbackRate = currentSettings.ttsSpeed;
+        const audio = new Audio('data:audio/wav;base64,' + wavBase64);
+        const spd = Number(currentSettings.ttsSpeed || 1.0);
+        
+        audio.playbackRate = spd;
+        audio.defaultPlaybackRate = spd;
+
+        audio.addEventListener('loadedmetadata', () => {
+          audio.playbackRate = Number(currentSettings.ttsSpeed || 1.0);
+        });
+        audio.addEventListener('play', () => {
+          audio.playbackRate = Number(currentSettings.ttsSpeed || 1.0);
+        });
+        audio.addEventListener('playing', () => {
+          audio.playbackRate = Number(currentSettings.ttsSpeed || 1.0);
+        });
+
+        activeAudio = audio;
 
         testBtn.style.display = 'none';
         stopBtn.style.display = 'flex';
@@ -3138,30 +3541,105 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return raw.endsWith('/') ? raw.slice(0, -1) : raw;
   }
 
+  // Consulta direta à API Pública do GitHub com detecção inteligente de repositório e branch
+  async function fetchDirectGitHubStatus() {
+    const candidateRepos = [
+      'pinguelanarosca/STT-TTSByAlee',
+      'pinguelanarosca/STT-TTSByAlee1'
+    ];
+    const candidateBranches = ['main', 'master'];
+
+    let lastError = null;
+
+    for (const repo of candidateRepos) {
+      for (const branch of candidateBranches) {
+        try {
+          const res = await fetch('https://api.github.com/repos/' + repo + '/commits/' + branch, {
+            headers: { 'Accept': 'application/vnd.github.v3+json' }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const sha = data.sha ? data.sha.substring(0, 7) : branch;
+            const msg = data.commit?.message ? data.commit.message.split('\\n')[0] : 'Último commit';
+            const author = data.commit?.author?.name || 'GitHub';
+            const date = data.commit?.author?.date ? new Date(data.commit.author.date).toLocaleString('pt-BR') : '';
+
+            return {
+              isGitRepo: true,
+              branch: branch,
+              currentCommit: sha,
+              commitDate: date,
+              commitMessage: msg,
+              author: author,
+              remoteUrl: 'https://github.com/' + repo,
+              repoName: repo,
+              dirty: false,
+              hasUpdates: true,
+              source: 'github_api'
+            };
+          } else if (res.status === 404) {
+            lastError = new Error('Repositório ou branch não encontrada (' + repo + '@' + branch + ')');
+          } else {
+            lastError = new Error('GitHub API HTTP ' + res.status);
+          }
+        } catch (e) {
+          lastError = e;
+        }
+      }
+    }
+
+    throw lastError || new Error('Não foi possível conectar ao GitHub');
+  }
+
   async function checkGitStatusInPopup() {
     if (!popupCheckGitBtn) return;
     popupCheckGitBtn.disabled = true;
     popupCheckGitBtn.innerText = 'Consultando...';
-    addPopupUpdateLog('[$] Verificando status do Git no servidor...');
+    addPopupUpdateLog('[$] Consultando status no GitHub (pinguelanarosca/STT-TTSByAlee)...');
 
     try {
-      const sUrl = getServerBaseUrl();
-      const res = await fetch(sUrl + '/api/git/status');
-      const data = await res.json();
+      let data = null;
 
-      if (popupGitBadge) popupGitBadge.innerText = data.branch || 'main';
-      if (popupGitCommit) popupGitCommit.innerText = data.currentCommit || 'N/A';
-      if (popupGitDirty) {
-        popupGitDirty.innerText = data.dirty ? (data.modifiedFiles?.length + ' alterados') : 'Limpa (Clean)';
-        popupGitDirty.style.color = data.dirty ? '#fbbf24' : '#34d399';
+      // 1. Tenta API direta do GitHub
+      try {
+        data = await fetchDirectGitHubStatus();
+        addPopupUpdateLog('✓ Conectado diretamente à API pública do GitHub!');
+      } catch (ghErr) {
+        // 2. Se a API do GitHub falhar, tenta o servidor local caso esteja ativo
+        const sUrl = getServerBaseUrl();
+        try {
+          const res = await fetch(sUrl + '/api/git/status', {
+            headers: { 'Accept': 'application/json' }
+          });
+          const ct = res.headers.get('content-type') || '';
+          if (res.ok && ct.includes('application/json')) {
+            data = await res.json();
+            addPopupUpdateLog('✓ Conectado ao servidor local.');
+          }
+        } catch {}
+
+        if (!data) {
+          throw new Error(ghErr.message || 'Verifique sua conexão com a internet');
+        }
       }
 
-      addPopupUpdateLog('✓ Status verificado: ' + (data.isGitRepo ? 'Repositório Ativo' : 'Pasta Local'));
-      if (data.hasUpdates) {
-        addPopupUpdateLog('⚡ Há novidades no GitHub! Clique em Baixar e Instalar.');
+      if (data) {
+        if (popupGitBadge) popupGitBadge.innerText = (data.repoName ? data.repoName.split('/')[1] : '') + ' (' + (data.branch || 'main') + ')';
+        if (popupGitCommit) popupGitCommit.innerText = data.currentCommit || 'N/A';
+        if (popupGitDirty) {
+          popupGitDirty.innerText = data.source === 'github_api' ? 'Sincronizado com GitHub' : (data.dirty ? (data.modifiedFiles?.length + ' alterados') : 'Limpa (Clean)');
+          popupGitDirty.style.color = '#34d399';
+        }
+
+        addPopupUpdateLog('📌 Último Commit: ' + data.currentCommit + ' - "' + (data.commitMessage || '') + '"');
+        if (data.commitDate) {
+          addPopupUpdateLog('📅 Data: ' + data.commitDate + (data.author ? ' (' + data.author + ')' : ''));
+        }
+        addPopupUpdateLog('⚡ Dica: execute "atualizar_extensao.bat" na pasta da extensão para atualizar tudo automaticamente!');
       }
     } catch (err) {
-      addPopupUpdateLog('❌ Falha ao consultar servidor: ' + (err.message || err));
+      addPopupUpdateLog('❌ Falha na consulta: ' + (err.message || err));
+      addPopupUpdateLog('💡 Para atualizar sem internet ou API, execute atualizar_extensao.bat na pasta.');
     } finally {
       popupCheckGitBtn.disabled = false;
       popupCheckGitBtn.innerText = '🔍 1. Verificar Status Git';
@@ -3176,36 +3654,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     popupPullGitBtn.addEventListener('click', async () => {
       popupPullGitBtn.disabled = true;
       popupPullGitBtn.innerText = 'Baixando...';
-      addPopupUpdateLog('[$] Iniciando download e instalação do GitHub...');
+      addPopupUpdateLog('[$] Iniciando download da versão mais recente do GitHub...');
 
+      let pullSucceeded = false;
+
+      // 1. Tentar pull via servidor local se existir
       try {
         const sUrl = getServerBaseUrl();
         const res = await fetch(sUrl + '/api/git/pull', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ branch: 'main', force: false, runInstall: true })
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ repoUrl: 'https://github.com/pinguelanarosca/STT-TTSByAlee1', branch: 'main', force: false, runInstall: true })
         });
-        const data = await res.json();
-
-        if (data.steps) {
-          data.steps.forEach(s => {
-            addPopupUpdateLog((s.success ? '✓ ' : '⚠️ ') + s.name + ' (' + s.durationMs + 'ms)');
-          });
+        const ct = res.headers.get('content-type') || '';
+        if (res.ok && ct.includes('application/json')) {
+          const data = await res.json();
+          if (data.steps) {
+            data.steps.forEach(s => {
+              addPopupUpdateLog((s.success ? '✓ ' : '⚠️ ') + s.name + ' (' + s.durationMs + 'ms)');
+            });
+          }
+          if (data.success) {
+            pullSucceeded = true;
+            addPopupUpdateLog('✓ ' + data.message);
+          }
         }
-
-        if (data.success) {
-          addPopupUpdateLog('✓ ' + data.message);
-          addPopupUpdateLog('⚡ Clique em "Recarregar Extensão" abaixo para aplicar.');
-        } else {
-          addPopupUpdateLog('❌ ' + data.message);
-        }
-        await checkGitStatusInPopup();
-      } catch (err) {
-        addPopupUpdateLog('❌ Erro na requisição: ' + (err.message || err));
-      } finally {
-        popupPullGitBtn.disabled = false;
-        popupPullGitBtn.innerText = '⬇️ 2. Baixar & Instalar do GitHub';
+      } catch (e) {
+        // Servidor local não respondeu, usaremos download direto
       }
+
+      // 2. Se não estiver rodando servidor local, abrir download direto do ZIP do GitHub
+      if (!pullSucceeded) {
+        const repoZipUrl = 'https://github.com/pinguelanarosca/STT-TTSByAlee1/archive/refs/heads/main.zip';
+        addPopupUpdateLog('📥 Baixando pacote ZIP atualizado do repositório GitHub...');
+        chrome.tabs.create({ url: repoZipUrl });
+        addPopupUpdateLog('✓ Download do arquivo ZIP iniciado!');
+        addPopupUpdateLog('⚡ Após descompactar na pasta da extensão, clique no botão 3 (Recarregar Extensão).');
+      }
+
+      popupPullGitBtn.disabled = false;
+      popupPullGitBtn.innerText = '⬇️ 2. Baixar & Instalar do GitHub';
     });
   }
 
@@ -4527,36 +5015,109 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return raw.endsWith('/') ? raw.slice(0, -1) : raw;
   }
 
+  // Consulta direta à API Pública do GitHub com detecção inteligente de repositório e branch
+  async function fetchDirectGitHubStatusOptions() {
+    const candidateRepos = [
+      'pinguelanarosca/STT-TTSByAlee',
+      'pinguelanarosca/STT-TTSByAlee1'
+    ];
+    const candidateBranches = ['main', 'master'];
+
+    let lastError = null;
+
+    for (const repo of candidateRepos) {
+      for (const branch of candidateBranches) {
+        try {
+          const res = await fetch('https://api.github.com/repos/' + repo + '/commits/' + branch, {
+            headers: { 'Accept': 'application/vnd.github.v3+json' }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const sha = data.sha ? data.sha.substring(0, 7) : branch;
+            const msg = data.commit?.message ? data.commit.message.split('\\n')[0] : 'Último commit';
+            const author = data.commit?.author?.name || 'GitHub';
+            const date = data.commit?.author?.date ? new Date(data.commit.author.date).toLocaleString('pt-BR') : '';
+
+            return {
+              isGitRepo: true,
+              branch: branch,
+              currentCommit: sha,
+              commitDate: date,
+              commitMessage: msg,
+              author: author,
+              remoteUrl: 'https://github.com/' + repo,
+              repoName: repo,
+              dirty: false,
+              hasUpdates: true,
+              source: 'github_api'
+            };
+          } else if (res.status === 404) {
+            lastError = new Error('Repositório ou branch não encontrada (' + repo + '@' + branch + ')');
+          } else {
+            lastError = new Error('GitHub API HTTP ' + res.status);
+          }
+        } catch (e) {
+          lastError = e;
+        }
+      }
+    }
+
+    throw lastError || new Error('Não foi possível conectar ao GitHub');
+  }
+
   async function checkGitStatusInOptions() {
     if (!optCheckGitBtn) return;
     optCheckGitBtn.disabled = true;
     optCheckGitBtn.innerText = 'Consultando...';
-    addOptGitLog('[$] Consultando status do Git no servidor...');
+    addOptGitLog('[$] Consultando status no GitHub (pinguelanarosca/STT-TTSByAlee)...');
 
     try {
-      const sUrl = getOptionsServerBaseUrl();
-      const res = await fetch(sUrl + '/api/git/status');
-      const data = await res.json();
+      let data = null;
 
-      if (optGitBadge) optGitBadge.innerText = data.branch || 'main';
-      if (optGitCommit) optGitCommit.innerText = data.currentCommit || 'N/A';
-      if (optGitDirty) {
-        optGitDirty.innerText = data.dirty ? (data.modifiedFiles?.length + ' alterados') : 'Limpa (Clean)';
-        optGitDirty.style.color = data.dirty ? '#fbbf24' : '#34d399';
-      }
-      if (optGitUpdates) {
-        optGitUpdates.innerText = data.hasUpdates ? 'Disponíveis no GitHub!' : 'Atualizado';
-        optGitUpdates.style.color = data.hasUpdates ? '#38bdf8' : '#34d399';
+      // 1. Tentar API direta do GitHub
+      try {
+        data = await fetchDirectGitHubStatusOptions();
+        addOptGitLog('✓ Conectado diretamente à API pública do GitHub!');
+      } catch (ghErr) {
+        // 2. Fallback para servidor local se houver
+        const sUrl = getOptionsServerBaseUrl();
+        try {
+          const res = await fetch(sUrl + '/api/git/status', {
+            headers: { 'Accept': 'application/json' }
+          });
+          const ct = res.headers.get('content-type') || '';
+          if (res.ok && ct.includes('application/json')) {
+            data = await res.json();
+            addOptGitLog('✓ Conectado ao servidor local.');
+          }
+        } catch {}
+
+        if (!data) {
+          throw new Error(ghErr.message || 'Verifique sua conexão com a internet');
+        }
       }
 
-      addOptGitLog('✓ Status verificado com sucesso. Branch: ' + (data.branch || 'main') + ' | Commit: ' + (data.currentCommit || 'N/A'));
-      if (data.hasUpdates) {
-        addOptGitLog('⚡ Há novas atualizações disponíveis no GitHub! Clique no botão 2 para baixar.');
-      } else {
-        addOptGitLog('✓ O repositório local já está na versão mais recente do remoto.');
+      if (data) {
+        if (optGitBadge) optGitBadge.innerText = (data.repoName ? data.repoName.split('/')[1] : '') + ' (' + (data.branch || 'main') + ')';
+        if (optGitCommit) optGitCommit.innerText = data.currentCommit || 'N/A';
+        if (optGitDirty) {
+          optGitDirty.innerText = data.source === 'github_api' ? 'Sincronizado com GitHub' : (data.dirty ? (data.modifiedFiles?.length + ' alterados') : 'Limpa (Clean)');
+          optGitDirty.style.color = '#34d399';
+        }
+        if (optGitUpdates) {
+          optGitUpdates.innerText = 'Disponível no GitHub';
+          optGitUpdates.style.color = '#34d399';
+        }
+
+        addOptGitLog('📌 Último Commit: ' + data.currentCommit + ' - "' + (data.commitMessage || '') + '"');
+        if (data.commitDate) {
+          addOptGitLog('📅 Data: ' + data.commitDate + (data.author ? ' (' + data.author + ')' : ''));
+        }
+        addOptGitLog('⚡ Dica: execute "atualizar_extensao.bat" na pasta da extensão para atualizar tudo automaticamente!');
       }
     } catch (err) {
       addOptGitLog('❌ Falha ao consultar status: ' + (err.message || err));
+      addOptGitLog('💡 Para atualizar sem internet ou API, execute atualizar_extensao.bat na pasta.');
     } finally {
       optCheckGitBtn.disabled = false;
       optCheckGitBtn.innerText = '🔍 1. Verificar Status Git';
@@ -4571,36 +5132,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     optPullGitBtn.addEventListener('click', async () => {
       optPullGitBtn.disabled = true;
       optPullGitBtn.innerText = 'Baixando...';
-      addOptGitLog('[$] Iniciando git fetch, git pull e npm install...');
+      addOptGitLog('[$] Iniciando download da versão mais recente do GitHub...');
 
+      let pullSucceeded = false;
+
+      // 1. Tentar pull via servidor local se existir
       try {
         const sUrl = getOptionsServerBaseUrl();
         const res = await fetch(sUrl + '/api/git/pull', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ branch: 'main', force: false, runInstall: true })
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ repoUrl: 'https://github.com/pinguelanarosca/STT-TTSByAlee1', branch: 'main', force: false, runInstall: true })
         });
-        const data = await res.json();
-
-        if (data.steps) {
-          data.steps.forEach(s => {
-            addOptGitLog((s.success ? '✓ ' : '⚠️ ') + s.name + ' (' + s.durationMs + 'ms)' + (s.output ? ': ' + s.output.slice(0, 80) : ''));
-          });
+        const ct = res.headers.get('content-type') || '';
+        if (res.ok && ct.includes('application/json')) {
+          const data = await res.json();
+          if (data.steps) {
+            data.steps.forEach(s => {
+              addOptGitLog((s.success ? '✓ ' : '⚠️ ') + s.name + ' (' + s.durationMs + 'ms)' + (s.output ? ': ' + s.output.slice(0, 80) : ''));
+            });
+          }
+          if (data.success) {
+            pullSucceeded = true;
+            addOptGitLog('✓ ' + data.message);
+          }
         }
-
-        if (data.success) {
-          addOptGitLog('✓ ' + data.message);
-          addOptGitLog('⚡ Para aplicar a nova versão, recarregue a extensão ou reinicie o Google Chrome.');
-        } else {
-          addOptGitLog('❌ ' + data.message);
-        }
-        await checkGitStatusInOptions();
-      } catch (err) {
-        addOptGitLog('❌ Erro na requisição de atualização: ' + (err.message || err));
-      } finally {
-        optPullGitBtn.disabled = false;
-        optPullGitBtn.innerText = '⬇️ 2. Baixar & Instalar do GitHub';
+      } catch (e) {
+        // Servidor local não respondeu, usaremos download direto
       }
+
+      // 2. Se não estiver rodando servidor local, abrir download direto do ZIP do GitHub
+      if (!pullSucceeded) {
+        const repoZipUrl = 'https://github.com/pinguelanarosca/STT-TTSByAlee1/archive/refs/heads/main.zip';
+        addOptGitLog('📥 Baixando pacote ZIP atualizado do repositório GitHub...');
+        chrome.tabs.create({ url: repoZipUrl });
+        addOptGitLog('✓ Download do arquivo ZIP iniciado!');
+        addOptGitLog('⚡ Após descompactar na pasta da extensão, clique no botão 3 (Recarregar Extensão).');
+      }
+
+      optPullGitBtn.disabled = false;
+      optPullGitBtn.innerText = '⬇️ 2. Baixar & Instalar do GitHub';
     });
   }
 
@@ -4685,6 +5256,72 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 3. **Passo 2 - Baixar e Instalar**: Executa \`git fetch\`, \`git pull\` e compilação/instalação das dependências automaticamente.
 4. **Passo 3 - Recarregar Extensão**: Recarrega a extensão em execução para carregar os novos scripts instantaneamente.
 5. **Passo 4 - Reiniciar Google Chrome**: Envia sinal de reinício e abre \`chrome://restart\` para reiniciar o navegador mantendo todas as abas abertas.
+`
+  },
+  {
+    filename: 'atualizar_extensao.bat',
+    path: 'atualizar_extensao.bat',
+    description: 'Script executável para Windows que atualiza todos os arquivos da extensão com 1 clique diretamente do GitHub',
+    language: 'bat',
+    content: `@echo off
+chcp 65001 >nul
+title Atualizador Automatico - STT e TTS de Satiro
+echo ================================================================
+echo       STT & TTS de Satiro - Atualizador do Repositorio GitHub
+echo ================================================================
+echo.
+echo [1/3] Verificando conexao com o GitHub (pinguelanarosca/STT-TTSByAlee)...
+echo.
+
+where git >nul 2>nul
+if %errorlevel% == 0 (
+    echo [2/3] Executando git pull para atualizar os arquivos...
+    git pull origin main
+    if %errorlevel% neq 0 (
+        git pull origin master
+    )
+) else (
+    echo [2/3] Git nao detectado no PATH do Windows.
+    echo Baixando e extraindo arquivos atualizados via PowerShell...
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $repo = 'pinguelanarosca/STT-TTSByAlee'; Write-Host 'Conectando ao GitHub...'; Invoke-WebRequest -Uri ('https://github.com/' + $repo + '/archive/refs/heads/main.zip') -OutFile 'update_temp.zip'; Expand-Archive -Path 'update_temp.zip' -DestinationPath 'temp_ext' -Force; Get-ChildItem -Path 'temp_ext\\*' | ForEach-Object { Copy-Item -Path ($_.FullName + '\\*') -Destination '.' -Recurse -Force }; Remove-Item 'update_temp.zip' -Force; Remove-Item 'temp_ext' -Recurse -Force; Write-Host '✓ Arquivos substituidos com sucesso!'"
+)
+
+echo.
+echo [3/3] Atualizacao concluida com sucesso!
+echo ================================================================
+echo Proximo passo:
+echo  1. Abra o Google Chrome.
+echo  2. Clique no icone do STT & TTS de Satiro.
+echo  3. Na aba 'Atualizacao', clique em '3. Recarregar Extensao'.
+echo ================================================================
+echo.
+pause
+`
+  },
+  {
+    filename: 'atualizar_extensao.sh',
+    path: 'atualizar_extensao.sh',
+    description: 'Script bash para Linux/macOS para atualizar os arquivos da extensão diretamente do GitHub',
+    language: 'bash',
+    content: `#!/usr/bin/env bash
+echo "================================================================"
+echo "      STT & TTS de Satiro - Atualizador do Repositório GitHub   "
+echo "================================================================"
+echo ""
+echo "[1/3] Verificando repositório GitHub..."
+if command -v git &> /dev/null; then
+    echo "[2/3] Executando git pull origin main..."
+    git pull origin main || git pull origin master
+else
+    echo "[2/3] Baixando pacote mais recente via curl..."
+    curl -L "https://github.com/pinguelanarosca/STT-TTSByAlee/archive/refs/heads/main.zip" -o update_temp.zip
+    unzip -o update_temp.zip -d temp_ext
+    cp -r temp_ext/*/* .
+    rm -rf update_temp.zip temp_ext
+fi
+echo ""
+echo "[3/3] ✓ Extensão atualizada com sucesso!"
+echo "Abra o Chrome e clique em 'Recarregar Extensão' no menu da extensão."
 `
   }
 ];

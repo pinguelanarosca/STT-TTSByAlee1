@@ -565,7 +565,7 @@ async function startServer() {
         currentCommit: 'Não inicializado',
         commitDate: '',
         commitMessage: 'Diretório local ainda não vinculado a um repositório Git',
-        remoteUrl: 'https://github.com/pinguelanarosca/STT-TTSByAlee',
+        remoteUrl: 'https://github.com/pinguelanarosca/STT-TTSByAlee1',
         dirty: false,
         modifiedFiles: [],
         output: 'O diretório atual não possui uma pasta .git. Você pode inicializar e vincular ao GitHub abaixo.',
@@ -586,7 +586,7 @@ async function startServer() {
       const currentCommit = commitRes.status === 'fulfilled' ? commitRes.value.stdout.trim() : 'Desconhecido';
       const commitDate = commitDateRes.status === 'fulfilled' ? commitDateRes.value.stdout.trim() : '';
       const commitMessage = commitMsgRes.status === 'fulfilled' ? commitMsgRes.value.stdout.trim() : '';
-      const remoteUrl = remoteRes.status === 'fulfilled' ? remoteRes.value.stdout.trim() : 'https://github.com/pinguelanarosca/STT-TTSByAlee';
+      const remoteUrl = remoteRes.status === 'fulfilled' ? remoteRes.value.stdout.trim() : 'https://github.com/pinguelanarosca/STT-TTSByAlee1';
       const statusOutput = statusRes.status === 'fulfilled' ? statusRes.value.stdout : '';
 
       const modifiedFiles = statusOutput
@@ -624,7 +624,7 @@ async function startServer() {
         currentCommit,
         commitDate,
         commitMessage,
-        remoteUrl: remoteUrl || 'https://github.com/pinguelanarosca/STT-TTSByAlee',
+        remoteUrl: remoteUrl || 'https://github.com/pinguelanarosca/STT-TTSByAlee1',
         dirty,
         modifiedFiles,
         remoteLatestCommit,
@@ -643,7 +643,7 @@ async function startServer() {
   // 2. Inicializar Git e Configurar Repositório Remoto
   app.post('/api/git/init', async (req, res) => {
     const cwd = process.cwd();
-    const repoUrl = req.body?.repoUrl?.trim() || 'https://github.com/pinguelanarosca/STT-TTSByAlee';
+    const repoUrl = req.body?.repoUrl?.trim() || 'https://github.com/pinguelanarosca/STT-TTSByAlee1';
     const steps: { name: string; command: string; output: string; success: boolean; durationMs: number }[] = [];
 
     async function runStep(name: string, command: string) {
@@ -683,7 +683,7 @@ async function startServer() {
   // 3. Baixar e Instalar do GitHub (git pull / fetch / install)
   app.post('/api/git/pull', async (req, res) => {
     const cwd = process.cwd();
-    const repoUrl = req.body?.repoUrl?.trim() || 'https://github.com/pinguelanarosca/STT-TTSByAlee';
+    const repoUrl = req.body?.repoUrl?.trim() || 'https://github.com/pinguelanarosca/STT-TTSByAlee1';
     const branch = req.body?.branch?.trim() || 'main';
     const force = Boolean(req.body?.force);
     const runInstall = req.body?.runInstall !== false;
@@ -772,7 +772,7 @@ async function startServer() {
   // 3.1. Enviar Commit e Push para o GitHub (Resolve erros de argumento do AI Studio)
   app.post('/api/git/push', async (req, res) => {
     const cwd = process.cwd();
-    let rawRepo = req.body?.repoUrl?.trim() || 'https://github.com/pinguelanarosca/STT-TTSByAlee';
+    let rawRepo = req.body?.repoUrl?.trim() || 'https://github.com/pinguelanarosca/STT-TTSByAlee1';
     const branch = (req.body?.branch?.trim() || 'main').replace(/^refs\/heads\//, '').replace(/[^a-zA-Z0-9._\-/]/g, '');
     const commitMessage = (req.body?.commitMessage?.trim() || 'Atualização STT & TTS Satiro').replace(/"/g, '\\"');
     const githubToken = req.body?.githubToken?.trim() || '';

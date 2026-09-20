@@ -33,7 +33,7 @@ interface GithubUpdaterProps {
 }
 
 export const GithubUpdater: React.FC<GithubUpdaterProps> = ({ settings }) => {
-  const [repoUrl, setRepoUrl] = useState('https://github.com/pinguelanarosca/STT-TTSByAlee');
+  const [repoUrl, setRepoUrl] = useState('https://github.com/pinguelanarosca/STT-TTSByAlee1');
   const [branch, setBranch] = useState('main');
   const [force, setForce] = useState(false);
   const [runInstall, setRunInstall] = useState(true);
@@ -77,7 +77,7 @@ export const GithubUpdater: React.FC<GithubUpdaterProps> = ({ settings }) => {
       const data: GitStatusData = await res.json();
       setStatusData(data);
 
-      if (data.remoteUrl && data.remoteUrl !== 'https://github.com/pinguelanarosca/STT-TTSByAlee') {
+      if (data.remoteUrl && data.remoteUrl !== 'https://github.com/pinguelanarosca/STT-TTSByAlee1') {
         setRepoUrl(data.remoteUrl);
       }
       if (data.branch) {
@@ -264,7 +264,7 @@ export const GithubUpdater: React.FC<GithubUpdaterProps> = ({ settings }) => {
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'stt-tts-de-satiro-atualizado.zip';
+      a.download = 'STT-TTSByAlee-atualizado.zip';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -414,7 +414,7 @@ export const GithubUpdater: React.FC<GithubUpdaterProps> = ({ settings }) => {
                 </div>
                 <p className="text-[11px] text-slate-300 leading-relaxed">
                   No campo do repositório no modal do AI Studio, certifique-se de preencher exatamente:
-                  <code className="block mt-1 p-1 bg-slate-900 rounded font-mono text-emerald-400 text-[10px] select-all">pinguelanarosca/STT-TTSByAlee</code>
+                  <code className="block mt-1 p-1 bg-slate-900 rounded font-mono text-emerald-400 text-[10px] select-all">pinguelanarosca/STT-TTSByAlee1</code>
                   <span className="text-rose-300 text-[10px] block mt-0.5">❌ Não inclua <code>https://github.com/</code> nem <code>.git</code>.</span>
                 </p>
               </div>

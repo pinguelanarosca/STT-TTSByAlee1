@@ -26,7 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'stt-tts-de-satiro.zip';
+      a.download = 'STT-TTSByAlee.zip';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
