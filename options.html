@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>STT&TTS de Satiro - Central de Configurações & Laboratório</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #090d16;
+      color: #f1f5f9;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: rgba(15, 23, 42, 0.9);
+      border-bottom: 1px solid #1e293b;
+      padding: 14px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      font-size: 24px;
+      background: linear-gradient(135deg, #0284c7, #8b5cf6);
+      border-radius: 10px;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: #38bdf8;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-web-app {
+      background: #2563eb;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 8px;
+      text-decoration: none;
+      border: 1px solid #3b82f6;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s;
+    }
+    .btn-web-app:hover { background: #1d4ed8; }
+
+    .nav-tabs {
+      display: flex;
+      gap: 6px;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      padding: 8px 24px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: #94a3b8;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .tab-btn:hover { color: #f8fafc; background: #1e293b; }
+    .tab-btn.active {
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+      border-color: rgba(56, 189, 248, 0.3);
+    }
+
+    main {
+      flex: 1;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn 0.2s ease-in; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-desc {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .shortcut-banner {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .shortcut-badge {
+      background: #0f172a;
+      border: 1px solid #475569;
+      color: #38bdf8;
+      font-family: monospace;
+      font-size: 11px;
+      padding: 3px 6px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 6px;
+    }
+    .shortcut-input {
+      background: #0f172a;
+      border: 1px solid #475569;
+      color: #34d399;
+      font-family: monospace;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      width: 100%;
+      cursor: text;
+      outline: none;
+    }
+    .shortcut-input:focus {
+      border-color: #34d399;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+    input[type="text"], input[type="password"], textarea, select {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: #38bdf8;
+      margin-bottom: 14px;
+    }
+
+    .voice-btn-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .voice-pill {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+      padding: 10px;
+      border-radius: 10px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .voice-pill.active {
+      background: #0284c7;
+      color: #fff;
+      border-color: #38bdf8;
+      box-shadow: 0 0 15px rgba(2, 132, 199, 0.35);
+    }
+
+    .toast-saved {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #065f46;
+      border: 1px solid #10b981;
+      color: #ecfdf5;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      display: none;
+      align-items: center;
+      gap: 8px;
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-logo">🎙️</div>
+      <div>
+        <div class="brand-title">STT&TTS de Satiro • Central de Opções & Laboratório</div>
+        <div class="brand-sub">Google Gemini TTS / STT & Google Lens Vision</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button id="optGrantMicBtn" class="btn-web-app" style="background:#065f46; border-color:#10b981;">
+        <span>🎤 Permitir Microfone</span>
+      </button>
+    </div>
+  </header>
+
+  <nav class="nav-tabs">
+    <button class="tab-btn active" data-target="tab-lab">🧪 Laboratório de Teste & Atalhos</button>
+    <button class="tab-btn" data-target="tab-mixer">🎛️ Mixer de Áudio TTS</button>
+    <button class="tab-btn" data-target="tab-prompts">🎙️ Estúdio de Instruções & Vozes</button>
+    <button class="tab-btn" data-target="tab-history">📜 Histórico de Transcrições</button>
+    <button class="tab-btn" data-target="tab-connection">⚙️ Conexão do Servidor & API</button>
+    <button class="tab-btn" data-target="tab-github">🔄 Atualização via GitHub</button>
+  </nav>
+
+  <main>
+    <!-- ABA 1: LABORATÓRIO DE TESTE -->
+    <div id="tab-lab" class="tab-content active">
+      <div class="grid-3">
+        <div class="shortcut-banner">
+          <input type="text" id="shortcutNarrateDisplay" class="shortcut-input" placeholder="Clique e aperte as teclas..." readonly />
+          <h4 style="font-size:13px; font-weight:600; margin-bottom:4px;">Narra Seleção TTS</h4>
+          <p style="font-size:12px; color:#94a3b8;">Selecione qualquer texto na web e use o atalho para ouvir a narração neural do Gemini.</p>
+        </div>
+        <div class="shortcut-banner" style="border-color:#0284c7;">
+          <span class="shortcut-badge" style="color:#38bdf8;">Ctrl + Shift + Arrastar</span>
+          <h4 style="font-size:13px; font-weight:600; margin-bottom:4px;">Google Lens Vision</h4>
+          <p style="font-size:12px; color:#94a3b8;">Segure Ctrl+Shift e arraste o mouse sobre gráficos ou textos para narrar a foto.</p>
+        </div>
+        <div class="shortcut-banner" style="border-color:#ef4444;">
+          <input type="text" id="shortcutRecordDisplay" class="shortcut-input" style="color:#fca5a5; border-color:#991b1b;" placeholder="Clique e aperte as teclas..." readonly />
+          <h4 style="font-size:13px; font-weight:600; margin-bottom:4px;">Gravar & Transcrever</h4>
+          <p style="font-size:12px; color:#94a3b8;">Foque em um campo e use o atalho para gravar. Fale no microfone e use novamente para digitar.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">📝 Campos de Teste Imediato (Com Microfone Integrado)</div>
+            <div class="card-desc">Clique no campo e pressione <b>Pause / Break</b> (ou <b>Ctrl+Shift+Espaço</b>), ou use o botão de microfone do campo!</div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="margin:0;">1. Título do Relatório / Assunto</label>
+              <button class="opt-field-mic-btn" data-target="demoField1" style="background:#1e293b; border:1px solid #334155; color:#38bdf8; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">🎙️ Ditar aqui</button>
+            </div>
+            <input type="text" id="demoField1" placeholder="Clique aqui e pressione Pause ou Ctrl+Shift+Espaço para ditar..." />
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="margin:0;">2. E-mail de Resposta Rápida</label>
+              <button class="opt-field-mic-btn" data-target="demoField2" style="background:#1e293b; border:1px solid #334155; color:#38bdf8; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">🎙️ Ditar aqui</button>
+            </div>
+            <input type="text" id="demoField2" placeholder="Clique aqui e pressione Pause para ditar..." />
+          </div>
+
+          <div style="grid-column: 1 / -1;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="margin:0;">3. Notas Detalhadas da Reunião</label>
+              <button class="opt-field-mic-btn" data-target="demoField3" style="background:#1e293b; border:1px solid #334155; color:#38bdf8; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">🎙️ Ditar aqui</button>
+            </div>
+            <textarea id="demoField3" placeholder="Clique aqui e pressione Pause ou Ctrl+Shift+Espaço para ditar um parágrafo inteiro com pontuação automática..."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABA 2: MIXER DE ÁUDIO TTS -->
+    <div id="tab-mixer" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🎛️ Mixer de Masterização & Equalização TTS</div>
+            <div class="card-desc">Ajuste os graves, médios, agudos, velocidade e volume da voz neural.</div>
+          </div>
+          <button id="testMixerAudioBtn" class="btn-web-app" style="background:#0284c7;">▶️ Testar Áudio</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px;">
+          <div>
+            <h4 style="font-size:13px; color:#38bdf8; margin-bottom:12px;">Equalizador de 3 Vias</h4>
+            <div class="slider-row">
+              <span>Graves (Bass)</span>
+              <span id="bassVal" style="font-family:monospace; color:#38bdf8;">0 dB</span>
+            </div>
+            <input type="range" id="ttsBass" min="-10" max="10" step="1" value="0" />
+
+            <div class="slider-row">
+              <span>Médios (Mid)</span>
+              <span id="midVal" style="font-family:monospace; color:#38bdf8;">0 dB</span>
+            </div>
+            <input type="range" id="ttsMid" min="-10" max="10" step="1" value="0" />
+
+            <div class="slider-row">
+              <span>Agudos (Treble)</span>
+              <span id="trebleVal" style="font-family:monospace; color:#38bdf8;">0 dB</span>
+            </div>
+            <input type="range" id="ttsTreble" min="-10" max="10" step="1" value="0" />
+          </div>
+
+          <div>
+            <h4 style="font-size:13px; color:#38bdf8; margin-bottom:12px;">Dinâmica e Velocidade</h4>
+            <div class="slider-row">
+              <span>Velocidade de Fala</span>
+              <span id="speedVal" style="font-family:monospace; color:#38bdf8;">1.0x</span>
+            </div>
+            <input type="range" id="ttsSpeed" min="0.5" max="2.0" step="0.1" value="1.0" />
+
+            <div class="slider-row">
+              <span>Volume Master</span>
+              <span id="volVal" style="font-family:monospace; color:#38bdf8;">100%</span>
+            </div>
+            <input type="range" id="ttsVolume" min="0" max="1" step="0.05" value="1.0" />
+
+            <div class="slider-row">
+              <span>Pitch (Semitons)</span>
+              <span id="pitchVal" style="font-family:monospace; color:#38bdf8;">0 st</span>
+            </div>
+            <input type="range" id="ttsPitch" min="-6" max="6" step="1" value="0" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABA 3: ESTÚDIO DE INSTRUÇÕES E VOZES -->
+    <div id="tab-prompts" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🎙️ Seleção de Vozes Google Gemini</div>
+            <div class="card-desc">Escolha o timbre neural padrão utilizado nas narrações de texto e de tela.</div>
+          </div>
+        </div>
+
+        <div class="voice-btn-grid">
+          <div class="voice-pill active" data-voice="Kore">Kore<br><small style="font-size:10px; font-weight:normal; opacity:0.8;">Equilibrada e Clara</small></div>
+          <div class="voice-pill" data-voice="Puck">Puck<br><small style="font-size:10px; font-weight:normal; opacity:0.8;">Dinâmica e Jovem</small></div>
+          <div class="voice-pill" data-voice="Charon">Charon<br><small style="font-size:10px; font-weight:normal; opacity:0.8;">Grave e Serena</small></div>
+          <div class="voice-pill" data-voice="Fenrir">Fenrir<br><small style="font-size:10px; font-weight:normal; opacity:0.8;">Forte e Firme</small></div>
+          <div class="voice-pill" data-voice="Zephyr">Zephyr<br><small style="font-size:10px; font-weight:normal; opacity:0.8;">Suave e Acolhedora</small></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🧠 Prompts de Sistema para os Modelos de IA</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="margin:0;">1. Instruções para o Sistema Narrador (TTS - Ctrl + B)</label>
+              <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                <button class="preset-btn" data-target="narratorInstruction" data-val="Você é um narrador natural e expressivo. Leia o texto com dicção impecável, ritmo equilibrado e entonação humana. Converta siglas e números para forma falada fluida." style="background:#1e293b; border:1px solid #334155; color:#93c5fd; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">Humano & Equilibrado</button>
+                <button class="preset-btn" data-target="narratorInstruction" data-val="Você é um âncora de notícias. Narre o texto de maneira dinâmica, ágil, objetiva e com alta clareza de articulação, mantendo cadência profissional." style="background:#1e293b; border:1px solid #334155; color:#93c5fd; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">Locutor Jornalístico</button>
+                <button class="preset-btn" data-target="narratorInstruction" data-val="Você é um assistente de leitura acessível. Fale com ritmo sereno, pausas adequadas nas vírgulas e pontos, facilitando a compreensão integral de pessoas com deficiência visual." style="background:#1e293b; border:1px solid #334155; color:#93c5fd; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">Acessibilidade</button>
+              </div>
+            </div>
+            <textarea id="narratorInstruction" placeholder="Ex: Você é um narrador natural e expressivo..."></textarea>
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="margin:0;">2. Instruções para o Sistema Transcritor (STT - Pause / Break)</label>
+              <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                <button class="preset-btn" data-target="transcriberInstruction" data-val="Transcreva com fidelidade absoluta o áudio recebido. Aplique pontuação correta (pontos, vírgulas, interrogações), remova gagueiras e vícios de linguagem comuns. Retorne estritamente o texto transcrito, sem introduções ou observações." style="background:#1e293b; border:1px solid #334155; color:#fca5a5; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">Fidelidade Absoluta</button>
+                <button class="preset-btn" data-target="transcriberInstruction" data-val="Transcreva o áudio organizando as ideias principais em tópicos limpos caso o orador dite múltiplos pontos. Remova hesitações e garanta concordância gramatical impecável." style="background:#1e293b; border:1px solid #334155; color:#fca5a5; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">Ditado em Tópicos</button>
+              </div>
+            </div>
+            <textarea id="transcriberInstruction" placeholder="Ex: Transcreva com fidelidade absoluta o áudio recebido..."></textarea>
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="margin:0;">3. Instruções para o Gravador de Tela / Gemini Vision (Ctrl + Shift + Arrastar)</label>
+              <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                <button class="preset-btn" data-target="visionInstruction" data-val="Analise detalhadamente a imagem capturada da tela com o Google Lens. Se contiver texto, transcreva ou leia-o com máxima precisão. Se contiver gráficos, resuma os pontos centrais de forma concisa e natural para ser ouvida." style="background:#1e293b; border:1px solid #334155; color:#c4b5fd; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">Texto & OCR</button>
+                <button class="preset-btn" data-target="visionInstruction" data-val="Descreva detalhadamente a composição visual, cores principais, layout e conteúdo escrito do recorte da tela para permitir que uma pessoa com deficiência visual compreenda perfeitamente o contexto." style="background:#1e293b; border:1px solid #334155; color:#c4b5fd; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">Audiodescrição</button>
+              </div>
+            </div>
+            <textarea id="visionInstruction" placeholder="Ex: Analise detalhadamente a imagem capturada da tela com o Google Lens..."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABA 4: HISTÓRICO DE TRANSCRIÇÕES -->
+    <div id="tab-history" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">📜 Registro Recente de Transcrições da Extensão</div>
+            <div class="card-desc">Histórico das falas transcritas nos campos e seus respectivos alvos.</div>
+          </div>
+          <button id="clearHistoryBtn" class="tab-btn" style="background:#334155; color:#fca5a5;">Limpar Histórico</button>
+        </div>
+
+        <div id="historyTableContainer" style="font-size:12px;">
+          <div style="text-align:center; padding:32px; color:#64748b;">Nenhuma transcrição gravada ainda. Pressione Pause em qualquer página para começar.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABA 5: CONEXÃO E API -->
+    <div id="tab-connection" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">⚙️ Endereço do Servidor STT&TTS de Satiro & Credenciais</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div>
+            <label>URL do Servidor STT&TTS de Satiro Backend</label>
+            <div style="display:flex; gap:10px;">
+              <input type="text" id="serverUrl" placeholder="http://localhost:3000" />
+              <button id="testPingBtn" class="btn-web-app" style="white-space:nowrap; background:#334155;">Testar Conexão</button>
+            </div>
+            <span id="pingResult" style="font-size:11px; margin-top:4px; display:block; color:#94a3b8;">Status da API: Pronto</span>
+          </div>
+
+          <div>
+            <label>Chave de API Gemini (<code style="color:#f59e0b;">.env</code> / Manual)</label>
+            <div style="display:flex; gap:10px; margin-bottom:8px;">
+              <input type="password" id="apiKey" placeholder="Cole sua chave Gemini (ou use a lida de .env)" style="flex:1;" />
+              <button type="button" id="toggleApiKeyBtn" class="btn-web-app" style="white-space:nowrap; background:#334155;">Mostrar</button>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; font-family:monospace; font-size:13px; color:#34d399; background:#020617; padding:10px 14px; border-radius:8px; border:1px solid #1e293b;" id="optionsMaskedKeyDisplay">
+              <span>AIzaSy... (.env)</span>
+              <span style="font-size:10px; background:#065f46; color:#a7f3d0; padding:2px 8px; border-radius:4px; font-family:sans-serif;">LIDO DA RAIZ</span>
+            </div>
+            <span style="font-size:11px; margin-top:4px; display:block; color:#94a3b8;">Chave de API do Google Gemini para síntese neural e transcrição.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABA 6: ATUALIZAÇÃO VIA GITHUB -->
+    <div id="tab-github" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🔄 Atualização do Aplicativo e Extensão via GitHub</div>
+            <div class="card-desc">Verifique o status do repositório, baixe as novidades direto do GitHub e reinicie o Google Chrome.</div>
+          </div>
+          <span id="optGitBadge" class="shortcut-badge" style="color:#a5b4fc; background:#312e81; font-size:12px; padding:4px 10px;">main</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:20px;">
+          <div style="background:#1e293b; border:1px solid #334155; border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:#94a3b8; margin-bottom:2px;">Commit Local Atual</div>
+            <div id="optGitCommit" style="font-family:monospace; font-size:13px; font-weight:700; color:#38bdf8;">Consultando...</div>
+          </div>
+          <div style="background:#1e293b; border:1px solid #334155; border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:#94a3b8; margin-bottom:2px;">Árvore de Arquivos</div>
+            <div id="optGitDirty" style="font-family:monospace; font-size:13px; font-weight:700; color:#34d399;">Limpa (Clean)</div>
+          </div>
+          <div style="background:#1e293b; border:1px solid #334155; border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:#94a3b8; margin-bottom:2px;">Atualizações no Remoto</div>
+            <div id="optGitUpdates" style="font-family:monospace; font-size:13px; font-weight:700; color:#94a3b8;">Aguardando verificação</div>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
+          <button id="optCheckGitBtn" class="btn-web-app" style="background:#1e293b; border-color:#334155;">
+            <span>🔍 1. Verificar Status Git</span>
+          </button>
+          <button id="optPullGitBtn" class="btn-web-app" style="background:#2563eb;">
+            <span>⬇️ 2. Baixar &amp; Instalar do GitHub</span>
+          </button>
+          <button id="optReloadExtBtn" class="btn-web-app" style="background:#059669; border-color:#10b981;">
+            <span>🔄 3. Recarregar Extensão</span>
+          </button>
+          <button id="optRestartChromeBtn" class="btn-web-app" style="background:#b45309; border-color:#d97706;">
+            <span>🚀 4. Reiniciar Google Chrome</span>
+          </button>
+        </div>
+
+        <div>
+          <label>Terminal de Operações Git &amp; Instalação</label>
+          <div id="optGitTerminalLogs" style="background:#020617; border:1px solid #1e293b; border-radius:10px; padding:14px; font-family:monospace; font-size:12px; color:#94a3b8; height:180px; overflow-y:auto; line-height:1.5;">
+            <div>[$] Terminal pronto para operações Git.</div>
+            <div>[$] Clique em "Verificar Status Git" para consultar o repositório remoto.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="toastSaved" class="toast-saved">
+    <span>✓ Configuração salva automaticamente no navegador!</span>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

@@ -2,7 +2,7 @@ import { ExtensionFileItem } from '../types';
 
 export const DEFAULT_SETTINGS = {
   connectionMode: 'direct' as const,
-  apiKey: 'AQ.Ab8RN6JkFmDWomdC0iYpYX9D787FfbLg5_Vpn0uyY_U8USm50Q',
+  apiKey: '',
   serverUrl: '',
   ttsVoice: 'Kore' as const,
   narratorInstruction: 'Você é um narrador natural e expressivo. Leia o texto com dicção impecável, ritmo equilibrado e entonação humana. Converta siglas e números para forma falada fluida.',
@@ -24,11 +24,11 @@ export const DEFAULT_SETTINGS = {
 
 export const EXTENSION_FILES: ExtensionFileItem[] = [
   {
-    filename: '.env',
-    path: '.env',
-    description: 'Arquivo de configuração local da chave de API do Google Gemini',
+    filename: '.env.example',
+    path: '.env.example',
+    description: 'Arquivo de exemplo de configuração da chave de API do Google Gemini',
     language: 'text',
-    content: `GEMINI_API_KEY=AQ.Ab8RN6JkFmDWomdC0iYpYX9D787FfbLg5_Vpn0uyY_U8USm50Q\n`
+    content: `# AVISO DE SEGURANÇA: Qualquer chave de API que já esteve neste arquivo deve ser considerada vazada e revogada imediatamente em https://aistudio.google.com/apikey\nGEMINI_API_KEY=\n`
   },
   {
     filename: 'manifest.json',
@@ -38,7 +38,7 @@ export const EXTENSION_FILES: ExtensionFileItem[] = [
     content: `{
   "manifest_version": 3,
   "name": "STT&TTS de Satiro",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Narra seleções com Ctrl+B, captura tela com Google Lens via Ctrl+Shift+Arrastar e transcreve áudio no campo ativo com Pause/Break ou Ctrl+Shift+Espaço via Google Gemini.",
   "permissions": [
     "activeTab",
@@ -230,7 +230,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   let settings = {
     connectionMode: 'direct',
     serverUrl: '',
-    apiKey: 'AQ.Ab8RN6JkFmDWomdC0iYpYX9D787FfbLg5_Vpn0uyY_U8USm50Q',
+    apiKey: '',
     ttsVoice: 'Kore',
     narratorInstruction: 'Você é um narrador natural e expressivo. Leia o texto com dicção impecável.',
     transcriberInstruction: 'Transcreva com fidelidade absoluta o áudio recebido. Aplique pontuação correta.',
@@ -810,10 +810,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   const EXT_TTS_CASCADE = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
-    'gemini-2.5-flash-lite',
-    'gemini-3.1-flash-tts-preview'
+    'gemini-3.1-flash-tts-preview',
+    'gemini-2.5-flash-tts',
+    'gemini-2.5-pro-preview-tts',
+    'gemini-2.5-flash-lite-preview-tts'
   ];
 
   const EXT_STT_CASCADE = [
@@ -1578,8 +1578,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     try {
       el.focus();
       if (el.tagName.toLowerCase() === 'textarea' || el.tagName.toLowerCase() === 'input') {
-        const start = el.selectionStart || el.value.length;
-        const end = el.selectionEnd || el.value.length;
+        const start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+        const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
         const currentVal = el.value || '';
         const needsSpace = start > 0 && !currentVal.slice(start - 1, start).match(/\\s/);
         const textToInsert = (needsSpace ? ' ' : '') + text;
@@ -2627,7 +2627,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     connectionMode: 'direct',
     ttsVoice: 'Kore',
     ttsSpeed: 1.0,
-    apiKey: 'AQ.Ab8RN6JkFmDWomdC0iYpYX9D787FfbLg5_Vpn0uyY_U8USm50Q',
+    apiKey: '',
     narratorInstruction: 'Você é um narrador natural e expressivo.',
     transcriberInstruction: 'Transcreva fielmente em português do Brasil sem explicações.'
   };
@@ -2667,6 +2667,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return buffer;
   }
 
+  function uint8ArrayToBase64(bytes) {
+    return new Promise((resolve, reject) => {
+      const blob = new Blob([bytes]);
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
   function isQuotaOrNotFoundError(err) {
     if (!err) return false;
     const msg = String(err.message || err.error?.message || (typeof err === 'object' ? JSON.stringify(err) : err) || '').toLowerCase();
@@ -2690,10 +2700,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   const POPUP_TTS_CASCADE = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
-    'gemini-2.5-flash-lite',
-    'gemini-3.1-flash-tts-preview'
+    'gemini-3.1-flash-tts-preview',
+    'gemini-2.5-flash-tts',
+    'gemini-2.5-pro-preview-tts',
+    'gemini-2.5-flash-lite-preview-tts'
   ];
 
   const POPUP_STT_CASCADE = [
@@ -2844,12 +2854,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         pcmBytes[i] = binaryStr.charCodeAt(i);
       }
       const wavBuffer = pcmToWav(pcmBytes, 24000);
-      const wavBytes = new Uint8Array(wavBuffer);
-      let wavBinary = '';
-      for (let i = 0; i < wavBytes.length; i++) {
-        wavBinary += String.fromCharCode(wavBytes[i]);
-      }
-      return btoa(wavBinary);
+      return await uint8ArrayToBase64(new Uint8Array(wavBuffer));
     });
   }
 
@@ -3090,6 +3095,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
 
     updateApiKeyUI();
+    maybeAutoFetchKey();
   });
 
   // Salvar Chave Rápida
@@ -3108,19 +3114,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
   }
 
-  // Tentar obter chave automaticamente do servidor se necessário
-  const rawServer = currentSettings.serverUrl || 'http://localhost:3000';
-  const serverBase = rawServer.endsWith('/') ? rawServer.slice(0, -1) : rawServer;
-  fetch(serverBase + '/api/get-key').then(r => r.json()).then(data => {
-    if (data.fullKey) {
-      currentSettings.apiKey = data.fullKey;
-      chrome.storage.sync.set({ apiKey: data.fullKey });
-      if (quickApiKeyInput && !quickApiKeyInput.value) {
-        quickApiKeyInput.value = data.fullKey;
-      }
-      updateApiKeyUI();
+  // Tentar obter chave automaticamente do servidor apenas se ainda não configurada
+  function maybeAutoFetchKey() {
+    if (!currentSettings.apiKey || !currentSettings.apiKey.trim()) {
+      const rawServer = currentSettings.serverUrl || 'http://localhost:3000';
+      const serverBase = rawServer.endsWith('/') ? rawServer.slice(0, -1) : rawServer;
+      fetch(serverBase + '/api/get-key').then(r => r.json()).then(data => {
+        if (!currentSettings.apiKey || !currentSettings.apiKey.trim()) {
+          if (data.fullKey) {
+            currentSettings.apiKey = data.fullKey;
+            chrome.storage.sync.set({ apiKey: data.fullKey });
+            if (quickApiKeyInput && !quickApiKeyInput.value) {
+              quickApiKeyInput.value = data.fullKey;
+            }
+            updateApiKeyUI();
+          }
+        }
+      }).catch(() => {});
     }
-  }).catch(() => {});
+  }
 
   // Validar Chave de .env no Google
   const validateApiKeyBtn = document.getElementById('validateApiKeyBtn');
@@ -4339,7 +4351,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   const defaults = {
     serverUrl: '',
-    apiKey: 'AQ.Ab8RN6JkFmDWomdC0iYpYX9D787FfbLg5_Vpn0uyY_U8USm50Q',
+    apiKey: '',
     ttsVoice: 'Kore',
     narratorInstruction: 'Você é um narrador natural e expressivo. Leia o texto com dicção impecável, ritmo equilibrado e entonação humana.',
     transcriberInstruction: 'Transcreva com fidelidade absoluta o áudio recebido. Aplique pontuação correta e remova vícios de linguagem comuns.',
@@ -4411,11 +4423,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return buffer;
   }
 
+  function uint8ArrayToBase64(bytes) {
+    return new Promise((resolve, reject) => {
+      const blob = new Blob([bytes]);
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
   const OPTIONS_TTS_CASCADE = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
-    'gemini-2.5-flash-lite',
-    'gemini-3.1-flash-tts-preview'
+    'gemini-3.1-flash-tts-preview',
+    'gemini-2.5-flash-tts',
+    'gemini-2.5-pro-preview-tts',
+    'gemini-2.5-flash-lite-preview-tts'
   ];
 
   const OPTIONS_STT_CASCADE = [
@@ -4516,12 +4538,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         pcmBytes[i] = binaryStr.charCodeAt(i);
       }
       const wavBuffer = pcmToWav(pcmBytes, 24000);
-      const wavBytes = new Uint8Array(wavBuffer);
-      let wavBinary = '';
-      for (let i = 0; i < wavBytes.length; i++) {
-        wavBinary += String.fromCharCode(wavBytes[i]);
-      }
-      return btoa(wavBinary);
+      return await uint8ArrayToBase64(new Uint8Array(wavBuffer));
     });
   }
 
@@ -4642,18 +4659,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       updateOptionsKeyDisplay(items.apiKey);
     }
 
-    // Tentar carregar da rota /api/get-key
-    const rawSUrl = items.serverUrl || document.getElementById('serverUrl')?.value || 'http://localhost:3000';
-    const sUrl = rawSUrl.endsWith('/') ? rawSUrl.slice(0, -1) : rawSUrl;
-    fetch(sUrl + '/api/get-key').then(r => r.json()).then(data => {
-      if (data.fullKey) {
-        currentSettings.apiKey = data.fullKey;
-        chrome.storage.sync.set({ apiKey: data.fullKey });
-        const keyInp = document.getElementById('apiKey');
-        if (keyInp && !keyInp.value) keyInp.value = data.fullKey;
-        updateOptionsKeyDisplay(data.fullKey);
-      }
-    }).catch(() => {});
+    // Só buscar da rota /api/get-key se NÃO houver chave já configurada
+    if (!items.apiKey || !String(items.apiKey).trim()) {
+      const rawSUrl = items.serverUrl || document.getElementById('serverUrl')?.value || 'http://localhost:3000';
+      const sUrl = rawSUrl.endsWith('/') ? rawSUrl.slice(0, -1) : rawSUrl;
+      fetch(sUrl + '/api/get-key').then(r => r.json()).then(data => {
+        if (!currentSettings.apiKey || !String(currentSettings.apiKey).trim()) {
+          if (data.fullKey) {
+            currentSettings.apiKey = data.fullKey;
+            chrome.storage.sync.set({ apiKey: data.fullKey });
+            const keyInp = document.getElementById('apiKey');
+            if (keyInp && !keyInp.value) keyInp.value = data.fullKey;
+            updateOptionsKeyDisplay(data.fullKey);
+          }
+        }
+      }).catch(() => {});
+    }
 
     if (items.ttsVoice) {
       selectedVoice = items.ttsVoice;

@@ -1,0 +1,393 @@
+/* Overlay e Viewfinder Google Lens */
+#vocallens-selection-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 2147483640;
+  cursor: crosshair;
+  display: none;
+  pointer-events: none;
+}
+
+.vocallens-lens-box {
+  position: absolute;
+  box-shadow: 0 0 0 9999px rgba(3, 7, 18, 0.65);
+  pointer-events: none;
+  border-radius: 12px;
+  background: rgba(6, 182, 212, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  transition: box-shadow 0.1s ease;
+}
+
+.vocallens-lens-corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-color: #ffffff;
+  border-style: solid;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9));
+}
+.vocallens-lens-corner.top-left {
+  top: -2px; left: -2px;
+  border-width: 3px 0 0 3px;
+  border-top-left-radius: 6px;
+}
+.vocallens-lens-corner.top-right {
+  top: -2px; right: -2px;
+  border-width: 3px 3px 0 0;
+  border-top-right-radius: 6px;
+}
+.vocallens-lens-corner.bottom-left {
+  bottom: -2px; left: -2px;
+  border-width: 0 0 3px 3px;
+  border-bottom-left-radius: 6px;
+}
+.vocallens-lens-corner.bottom-right {
+  bottom: -2px; right: -2px;
+  border-width: 0 3px 3px 0;
+  border-bottom-right-radius: 6px;
+}
+
+.vocallens-lens-laser {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #22d3ee, #38bdf8, #818cf8, transparent);
+  box-shadow: 0 0 10px #38bdf8, 0 0 20px #818cf8;
+  animation: lens-laser-scan 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes lens-laser-scan {
+  0% { top: 15%; opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { top: 85%; opacity: 0.6; }
+}
+
+.vocallens-lens-badge {
+  position: absolute;
+  bottom: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.94);
+  color: #22d3ee;
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vocallens-lens-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22d3ee;
+  box-shadow: 0 0 8px #22d3ee;
+  animation: vocallens-pulse 1s infinite;
+}
+
+/* Toast HUD Flutuante */
+.vocallens-hud-box {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 2147483647;
+  background: rgba(15, 23, 42, 0.96);
+  color: #f8fafc;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  border-radius: 14px;
+  border: 1px solid #334155;
+  box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.6);
+  display: flex;
+  padding: 10px 14px;
+  transition: opacity 0.25s ease;
+  pointer-events: auto;
+  max-width: 360px;
+  min-width: 280px;
+  backdrop-filter: blur(12px);
+}
+
+.vocallens-hud-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+
+.vocallens-hud-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vocallens-hud-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.vocallens-hud-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.vocallens-hud-preview {
+  font-size: 11px;
+  color: #e2e8f0;
+  background: #1e293b;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-style: italic;
+  max-height: 55px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 2px solid #10b981;
+}
+
+.vocallens-hud-counter {
+  margin-left: auto;
+  font-family: monospace;
+  font-size: 11px;
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.vocallens-hud-badge-ready {
+  font-size: 10px;
+  font-weight: 700;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.2);
+  padding: 2px 8px;
+  border-radius: 9999px;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  text-transform: uppercase;
+}
+
+.vocallens-hud-btn-copy {
+  background: #2563eb;
+  color: white;
+  border: none;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.vocallens-hud-dot-pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  animation: vocallens-pulse 1.4s infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.vocallens-hud-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: vocallens-spin 0.8s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.vocallens-hud-check {
+  color: #10b981;
+  font-weight: bold;
+  font-size: 13px;
+}
+
+@keyframes vocallens-pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+@keyframes vocallens-spin {
+  to { transform: rotate(360deg); }
+}
+
+.vocallens-hud-box[data-type="recording"] {
+  border-color: #ef4444;
+  background: #180909;
+}
+.vocallens-hud-box[data-type="sending"] {
+  border-color: #38bdf8;
+  background: #081a2e;
+}
+.vocallens-hud-box[data-type="processing"] {
+  border-color: #a855f7;
+  background: #180b2a;
+}
+.vocallens-hud-box[data-type="ready"] {
+  border-color: #10b981;
+  background: #062016;
+}
+
+/* Pop-up HUD de Narração Superior Direito */
+.vocallens-narration-box {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 2147483647;
+  background: rgba(15, 23, 42, 0.98);
+  color: #f8fafc;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  border-radius: 14px;
+  border: 1px solid #38bdf8;
+  box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.7);
+  padding: 12px 14px;
+  width: 320px;
+  max-width: 90vw;
+  backdrop-filter: blur(16px);
+  display: none;
+  transition: opacity 0.25s ease;
+}
+
+.vocallens-nhud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.vocallens-nhud-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+  animation: vocallens-pulse 1.2s infinite;
+}
+
+.vocallens-nhud-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.vocallens-nhud-close-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.vocallens-nhud-close-btn:hover {
+  color: #fff;
+}
+
+.vocallens-nhud-snippet {
+  font-size: 11px;
+  color: #cbd5e1;
+  background: #1e293b;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-style: italic;
+  margin-bottom: 10px;
+  max-height: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 2px solid #38bdf8;
+}
+
+.vocallens-nhud-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.vocallens-nhud-btn-action {
+  flex: 1;
+  background: #0284c7;
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vocallens-nhud-btn-action:hover {
+  background: #0369a1;
+}
+
+.vocallens-nhud-btn-stop {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vocallens-nhud-btn-stop:hover {
+  background: #b91c1c;
+}
+
+.vocallens-nhud-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #0f172a;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #1e293b;
+}
+
+.vocallens-nhud-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.vocallens-speed-pills {
+  display: flex;
+  gap: 4px;
+}
+
+.vocallens-sp-btn {
+  flex: 1;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  font-size: 10px;
+  padding: 3px 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.vocallens-sp-btn:hover {
+  background: #38bdf8;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.vocallens-slider {
+  width: 100%;
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
