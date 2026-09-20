@@ -1,0 +1,10 @@
+{
+  "name": "STT&TTS de Satiro",
+  "description": "Extensão do Google Chrome por Satiro com narração de seleção (Ctrl+B), captura de tela estilo Google Lens (Ctrl+Shift+Arrastar) e transcrição em campo ativo (Pause/Break) via Gemini API.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
